@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>排課工具</title>
+    <title>課表工具</title>
     <!-- 引入 Tailwind CSS 與 Font Awesome 圖示 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <!-- 引入 PapaParse 解析 CSV 工具 (用於解析 Google Sheets 匯出的 CSV) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    
     <style>
         body {
             font-family: 'Inter', 'Noto Sans TC', sans-serif;
@@ -43,7 +42,7 @@
             <div class="flex items-center space-x-3">
                 <div>
                     <h1 class="text-lg font-extrabold text-slate-900 tracking-tight">
-                        排課工具
+                        課表工具
                     </h1>
                 </div>
             </div>
@@ -124,10 +123,8 @@
             <div class="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[500px] lg:h-full">
                 <div class="p-3 border-b border-slate-200 flex justify-between items-center bg-slate-50/80">
                     <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-indigo-600"></span>
-                        <h3 class="font-bold text-slate-800 text-sm">課表</h3>
+                        <h3 id="grid-semester-label" class="font-bold text-slate-800 text-sm">上學期課表</h3>
                     </div>
-                    <span id="grid-semester-label" class="text-xs font-semibold px-2.5 py-1 rounded bg-indigo-100 text-indigo-800">上學期</span>
                 </div>
                 
                 <!-- 手機版加強橫向滾動機制，確保課表不消失 -->
@@ -267,7 +264,12 @@
     <!-- 自訂美化通知視窗 -->
     <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-    
+    <!-- 頁尾 -->
+    <footer class="bg-white border-t border-slate-200 py-3 mt-auto">
+        <div class="max-w-[1600px] mx-auto px-4 text-center text-[11px] text-slate-400">
+            <p>© 2026 卓越大學課表設計及排課規劃系統 · 專屬研究所及教育學程專用版</p>
+        </div>
+    </footer>
 
     <script>
         // 本機預設之課程資料，若無同步 Google Sheet 則以此載入
@@ -684,24 +686,15 @@
             }
         ];
 
+        // 系統狀態核心變數
         let COURSES_DATABASE = [...BUILTIN_COURSES_DATABASE];
-
-        let currentSemester = 1; // 1: 上學期, 2: 下學期
-        let selectedGridCell = null; // { day: X, period: Y }
+        let currentSemester = 1; 
+        let selectedGridCell = null; 
         let selectedSort = "default";
         let userSchedule = [];
 
         const localStorageKey = "advanced_scholarly_user_schedule";
         const googleSheetUrlKey = "google_sheet_csv_url_saved";
-
-        // 讀取 LocalStorage 當中已選的排課資料
-        try {
-            const saved = localStorage.getItem(localStorageKey);
-            if (saved) userSchedule = JSON.parse(saved);
-        } catch (e) {
-            console.warn("無法取得本機暫存資料", e);
-        }
-
         const dayToChinese = { 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日" };
 
         const colorPalette = [
@@ -714,68 +707,446 @@
             { bg: "bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100", label: "bg-teal-200 text-teal-800" },
             { bg: "bg-fuchsia-50 border-fuchsia-200 text-fuchsia-700 hover:bg-fuchsia-100", label: "bg-fuchsia-200 text-fuchsia-800" }
         ];
-    </script>
 
-    <script>
-        function showToast(message, type = "success") {
-            const container = document.getElementById("toast-container");
-            const toast = document.createElement("div");
-            toast.className = `flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border text-xs sm:text-sm transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto min-w-[280px] max-w-sm`;
-            
-            let icon = "";
-            if (type === "success") {
-                toast.classList.add("bg-emerald-50", "border-emerald-200", "text-emerald-800");
-                icon = `<i class="fa-solid fa-circle-check text-emerald-500 text-base sm:text-lg"></i>`;
-            } else if (type === "error") {
-                toast.classList.add("bg-rose-50", "border-rose-200", "text-rose-800");
-                icon = `<i class="fa-solid fa-circle-exclamation text-rose-500 text-base sm:text-lg"></i>`;
-            } else {
-                toast.classList.add("bg-indigo-50", "border-indigo-200", "text-indigo-800");
-                icon = `<i class="fa-solid fa-bell text-indigo-500 text-base sm:text-lg"></i>`;
-            }
-
-            toast.innerHTML = `
-                ${icon}
-                <div class="flex-grow font-medium leading-snug">${message}</div>
-                <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600 transition-colors">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            `;
-
-            container.appendChild(toast);
-            setTimeout(() => {
-                toast.classList.remove("translate-y-2", "opacity-0");
-            }, 30);
-
-            setTimeout(() => {
-                toast.classList.add("opacity-0", "translate-y-1");
-                setTimeout(() => toast.remove(), 300);
-            }, 4000);
+        // 取得特定節次是否排入課程
+        function getScheduledCourseAt(semester, day, period) {
+            return COURSES_DATABASE.find(course => 
+                userSchedule.includes(course.id) && 
+                course.semester === semester && 
+                course.day === day && 
+                course.periods.includes(period)
+            );
         }
 
+        // 重新繪製左側功課表格子
+        function renderScheduleGrid() {
+            const tbody = document.getElementById("schedule-tbody");
+            if (!tbody) return;
+            tbody.innerHTML = "";
+
+            for (let period = 2; period <= 8; period++) {
+                const tr = document.createElement("tr");
+                tr.className = "border-b border-slate-200 hover:bg-slate-50/50 transition-colors duration-150";
+
+                // 節次格
+                const tdPeriod = document.createElement("td");
+                tdPeriod.className = "py-1.5 font-bold text-slate-500 border-r border-slate-200 bg-slate-100/50 text-xs flex flex-col justify-center items-center h-[76px] w-16 flex-shrink-0";
+                tdPeriod.innerHTML = `
+                    <div class="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">第</div>
+                    <div class="text-sm text-slate-700 font-extrabold my-0.5">${period}</div>
+                    <div class="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">節</div>
+                `;
+                tr.appendChild(tdPeriod);
+
+                // 星期一至五
+                for (let day = 1; day <= 5; day++) {
+                    const tdCell = document.createElement("td");
+                    tdCell.className = "p-1 border-r border-slate-200 relative align-middle transition-all duration-200 cursor-pointer grid-cell-active h-[76px]";
+                    tdCell.dataset.day = day;
+                    tdCell.dataset.period = period;
+
+                    const scheduledCourse = getScheduledCourseAt(currentSemester, day, period);
+                    const isSelectedCell = selectedGridCell && selectedGridCell.day === day && selectedGridCell.period === period;
+
+                    if (isSelectedCell) {
+                        tdCell.className += " ring-2 ring-indigo-500 ring-inset bg-indigo-50/50";
+                    }
+
+                    if (scheduledCourse) {
+                        const colorIdx = parseInt(scheduledCourse.id.replace(/\D/g, "") || "0") % colorPalette.length;
+                        const palette = colorPalette[colorIdx];
+                        
+                        tdCell.className += ` ${palette.bg}`;
+                        tdCell.innerHTML = `
+                            <div class="h-full flex flex-col justify-between p-1 rounded text-left text-[11px] transition-all duration-200 relative">
+                                <div class="overflow-hidden">
+                                    <div class="font-extrabold leading-tight text-slate-900 line-clamp-2" title="${scheduledCourse.name}">${scheduledCourse.name}</div>
+                                    <div class="text-[9px] opacity-75 mt-0.5 truncate">${scheduledCourse.professor} | ${scheduledCourse.location.split(' ')[0]}</div>
+                                </div>
+                                <div class="flex justify-between items-center mt-0.5 pt-0.5 border-t border-black/5">
+                                    <span class="text-[9px] px-1 rounded bg-black/5 font-semibold truncate max-w-[70px]">${scheduledCourse.className}</span>
+                                    <button onclick="removeCourseEvent(event, '${scheduledCourse.id}')" class="text-rose-600 hover:text-white hover:bg-rose-500 w-3.5 h-3.5 rounded flex items-center justify-center transition-colors shadow-sm ml-1" title="移除課程">
+                                        <i class="fa-solid fa-xmark text-[9px]"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        tdCell.innerHTML = `
+                            <div class="h-full rounded border border-dashed border-slate-200 hover:border-indigo-400 text-slate-300 hover:text-indigo-500 transition-all duration-150 flex flex-col items-center justify-center py-2 group">
+                                <i class="fa-solid fa-plus text-[10px] opacity-0 group-hover:opacity-100 transform scale-75 hover:scale-100 transition-all mb-0.5"></i>
+                                <span class="text-[9px] font-medium opacity-30 hover:opacity-100">空堂</span>
+                            </div>
+                        `;
+                    }
+
+                    // 綁定點選事件
+                    tdCell.addEventListener("click", (e) => {
+                        if (!e.target.closest("button")) {
+                            selectGridCell(day, period);
+                        }
+                    });
+
+                    tr.appendChild(tdCell);
+                }
+                tbody.appendChild(tr);
+            }
+        }
+
+        // 渲染右側課程列表池
+        function renderCoursePool() {
+            const container = document.getElementById("course-pool-container");
+            const placeholder = document.getElementById("no-courses-placeholder");
+            const countLabel = document.getElementById("showing-count");
+            if (!container) return;
+            
+            const searchValue = document.getElementById("course-search").value.trim().toLowerCase();
+            const natureValue = document.getElementById("course-nature-filter").value;
+            const classValue = document.getElementById("course-class-filter").value;
+
+            // 1. 學期過濾
+            let filtered = COURSES_DATABASE.filter(c => c.semester === currentSemester);
+
+            // 2. 時段點選格過濾
+            if (selectedGridCell) {
+                filtered = filtered.filter(c => 
+                    c.day === selectedGridCell.day && 
+                    c.periods.includes(selectedGridCell.period)
+                );
+            }
+
+            // 3. 搜尋關鍵字
+            if (searchValue) {
+                filtered = filtered.filter(c => 
+                    c.name.toLowerCase().includes(searchValue) ||
+                    (c.englishName && c.englishName.toLowerCase().includes(searchValue)) ||
+                    c.professor.toLowerCase().includes(searchValue) ||
+                    c.location.toLowerCase().includes(searchValue) ||
+                    c.code.toLowerCase().includes(searchValue) ||
+                    (c.className && c.className.toLowerCase().includes(searchValue))
+                );
+            }
+
+            // 4. 性質過濾
+            if (natureValue) {
+                filtered = filtered.filter(c => c.nature === natureValue);
+            }
+
+            // 5. 班別過濾
+            if (classValue) {
+                filtered = filtered.filter(c => c.className === classValue);
+            }
+
+            // 6. 排序
+            if (selectedSort === "rate-desc") {
+                filtered.sort((a, b) => {
+                    const rateA = a.registered > 0 ? (a.selected / a.registered) : 0;
+                    const rateB = b.registered > 0 ? (b.selected / b.registered) : 0;
+                    return rateB - rateA;
+                });
+            } else if (selectedSort === "rate-asc") {
+                filtered.sort((a, b) => {
+                    const rateA = a.registered > 0 ? (a.selected / a.registered) : 0;
+                    const rateB = b.registered > 0 ? (b.selected / b.registered) : 0;
+                    return rateA - rateB;
+                });
+            }
+
+            container.innerHTML = "";
+            countLabel.textContent = `顯示 ${filtered.length} 門課`;
+
+            if (filtered.length === 0) {
+                placeholder.classList.remove("hidden");
+                placeholder.classList.add("flex");
+                return;
+            } else {
+                placeholder.classList.remove("flex");
+                placeholder.classList.add("hidden");
+            }
+
+            filtered.forEach(c => {
+                const isAlreadyAdded = userSchedule.includes(c.id);
+                const rate = c.registered > 0 ? (c.selected / c.registered * 100).toFixed(1) : "100.0";
+                
+                let badgeClass = "bg-slate-100 text-slate-700";
+                if (c.nature.includes("必修")) badgeClass = "bg-rose-100 text-rose-800";
+                else if (c.nature.includes("選修")) badgeClass = "bg-sky-100 text-sky-800";
+                else if (c.nature.includes("師培")) badgeClass = "bg-emerald-100 text-emerald-800";
+
+                const card = document.createElement("div");
+                card.className = `p-3 rounded-lg border text-xs transition-all relative ${
+                    isAlreadyAdded 
+                    ? "bg-slate-50 border-slate-200 opacity-65" 
+                    : "bg-white hover:bg-indigo-50/20 border-slate-200 shadow-sm hover:shadow"
+                }`;
+
+                card.innerHTML = `
+                    <div class="flex flex-col gap-1.5">
+                        <div class="flex justify-between items-start gap-2">
+                            <div>
+                                <span class="text-[9px] font-bold text-slate-400 mr-1">${c.code}</span>
+                                <span class="font-extrabold text-slate-800 text-xs sm:text-sm">${c.name}</span>
+                            </div>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 ${badgeClass}">${c.nature}</span>
+                        </div>
+                        
+                        <div class="text-[11px] text-slate-500 space-y-0.5">
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <span class="flex items-center gap-1 font-semibold text-slate-700">
+                                    <i class="fa-solid fa-user-tie text-slate-400"></i> ${c.professor}
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-graduation-cap text-slate-400"></i> ${c.className}
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-gem text-amber-500"></i> ${c.credits} 學分
+                                </span>
+                                ${c.englishClass === "是" ? `<span class="bg-violet-100 text-violet-800 px-1 py-0.2 rounded text-[9px] font-bold">全英語</span>` : ""}
+                            </div>
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <span class="text-indigo-600 font-bold bg-indigo-50 px-1 py-0.2 rounded">
+                                    <i class="fa-solid fa-clock"></i> 星期${dayToChinese[c.day]} 第 ${c.periods.join(',')} 節
+                                </span>
+                                <span class="text-slate-600 bg-slate-100 px-1 py-0.2 rounded truncate max-w-[240px]" title="${c.location}">
+                                    <i class="fa-solid fa-location-dot"></i> ${c.location}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- 錄取率與人數動態進度條 -->
+                        <div class="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-4 mt-1">
+                            <div class="flex flex-col gap-0.5 flex-grow">
+                                <div class="flex justify-between text-[10px] text-slate-500">
+                                    <span>預估選上率: <strong class="text-indigo-600">${rate}%</strong></span>
+                                    <span>${c.selected} / ${c.registered} (選上/登記)</span>
+                                </div>
+                                <div class="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                                    <div class="bg-indigo-600 h-full" style="width: ${Math.min(parseFloat(rate), 100)}%"></div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                ${isAlreadyAdded 
+                                    ? `<button onclick="removeCourse('${c.id}')" class="bg-slate-200 hover:bg-rose-600 hover:text-white text-slate-600 text-[10px] font-extrabold px-2 py-1 rounded transition-all flex items-center gap-1 group">
+                                         <i class="fa-solid fa-check group-hover:hidden"></i>
+                                         <i class="fa-solid fa-trash-can hidden group-hover:inline"></i>
+                                         <span>已加入</span>
+                                       </button>`
+                                    : `<button onclick="addCourse('${c.id}')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-extrabold px-2.5 py-1 rounded shadow-sm hover:shadow transition-all flex items-center gap-1">
+                                         <i class="fa-solid fa-plus"></i>
+                                         <span>加入課表</span>
+                                       </button>`
+                                }
+                            </div>
+                        </div>
+
+                        ${c.remarks ? `
+                        <div class="text-[9px] bg-amber-50 text-amber-800 rounded p-1 border border-amber-100/50 mt-1 flex gap-1 items-start">
+                            <i class="fa-solid fa-circle-exclamation mt-0.5 flex-shrink-0 text-amber-500"></i>
+                            <span class="line-clamp-1 hover:line-clamp-none transition-all cursor-help">${c.remarks}</span>
+                        </div>` : ""}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 點選特定格子進行時段過濾
+        function selectGridCell(day, period) {
+            if (selectedGridCell && selectedGridCell.day === day && selectedGridCell.period === period) {
+                resetGridFilter();
+            } else {
+                selectedGridCell = { day, period };
+                document.getElementById("btn-clear-filter").classList.remove("hidden");
+                
+                const timeStr = `星期${dayToChinese[day]}第 ${period} 節`;
+                document.getElementById("stat-selected-time").textContent = timeStr;
+                document.getElementById("stat-selected-time").className = "text-xs font-bold text-indigo-600 truncate max-w-[120px]";
+                document.getElementById("pool-title").textContent = `【${timeStr}】可選課程`;
+
+                renderScheduleGrid();
+                renderCoursePool();
+            }
+        }
+
+        // 重設時段過濾條件
+        function resetGridFilter() {
+            selectedGridCell = null;
+            const clearBtn = document.getElementById("btn-clear-filter");
+            if (clearBtn) clearBtn.classList.add("hidden");
+            
+            document.getElementById("stat-selected-time").textContent = "全部課程";
+            document.getElementById("stat-selected-time").className = "text-xs font-bold text-slate-500 truncate max-w-[120px]";
+            document.getElementById("pool-title").textContent = "所有開課總覽";
+
+            renderScheduleGrid();
+            renderCoursePool();
+        }
+
+        // 切換學期
+        function switchSemester(sem) {
+            currentSemester = sem;
+            selectedGridCell = null;
+            
+            const clearBtn = document.getElementById("btn-clear-filter");
+            if (clearBtn) clearBtn.classList.add("hidden");
+            
+            const btn1 = document.getElementById("btn-sem-1");
+            const btn2 = document.getElementById("btn-sem-2");
+            const label = document.getElementById("grid-semester-label");
+
+            if (sem === 1) {
+                btn1.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center bg-white text-indigo-600 shadow-sm";
+                btn2.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center text-slate-600 hover:text-slate-900";
+                label.textContent = "上學期課表";
+            } else {
+                btn1.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center text-slate-600 hover:text-slate-900";
+                btn2.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center bg-white text-indigo-600 shadow-sm";
+                label.textContent = "下學期課表";
+            }
+
+            document.getElementById("stat-selected-time").textContent = "全部課程";
+            document.getElementById("pool-title").textContent = "所有開課總覽";
+
+            renderScheduleGrid();
+            renderCoursePool();
+            updateStatistics();
+        }
+
+        // 加入課表
+        function addCourse(courseId) {
+            const cToAdd = COURSES_DATABASE.find(c => c.id === courseId);
+            if (!cToAdd) return;
+
+            for (let period of cToAdd.periods) {
+                const conflict = getScheduledCourseAt(cToAdd.semester, cToAdd.day, period);
+                if (conflict) {
+                    showToast(`選課衝突！該時段（星期${dayToChinese[cToAdd.day]}第${period}節）已安排「${conflict.name}」！`, "error");
+                    return;
+                }
+            }
+
+            userSchedule.push(courseId);
+            saveSchedule();
+            showToast(`已排入課程：「${cToAdd.name}」！`);
+
+            renderScheduleGrid();
+            renderCoursePool();
+            updateStatistics();
+        }
+
+        // 移出課表
+        function removeCourse(courseId) {
+            const course = COURSES_DATABASE.find(c => c.id === courseId);
+            userSchedule = userSchedule.filter(id => id !== courseId);
+            saveSchedule();
+            
+            if (course) {
+                showToast(`已將「${course.name}」移出課表。`, "info");
+            }
+
+            renderScheduleGrid();
+            renderCoursePool();
+            updateStatistics();
+        }
+
+        // 包裝後的移除事件，防止點擊穿透
+        function removeCourseEvent(event, courseId) {
+            event.stopPropagation();
+            removeCourse(courseId);
+        }
+
+        // 本地存檔
+        function saveSchedule() {
+            localStorage.setItem(localStorageKey, JSON.stringify(userSchedule));
+        }
+
+        // 清空功課表
+        function clearSchedule() {
+            const termCourses = COURSES_DATABASE.filter(c => c.semester === currentSemester && userSchedule.includes(c.id));
+            if (termCourses.length === 0) {
+                showToast("您當前學期的課表內本就是空的！", "info");
+                return;
+            }
+
+            userSchedule = userSchedule.filter(id => {
+                const c = COURSES_DATABASE.find(course => course.id === id);
+                return c && c.semester !== currentSemester;
+            });
+            
+            saveSchedule();
+            showToast("當前學期課表已全部清空！", "info");
+
+            renderScheduleGrid();
+            renderCoursePool();
+            updateStatistics();
+        }
+
+        // 更新課表統計面板資訊
+        function updateStatistics() {
+            const currentSemCourses = COURSES_DATABASE.filter(c => 
+                userSchedule.includes(c.id) && c.semester === currentSemester
+            );
+
+            document.getElementById("stat-course-count").textContent = `${currentSemCourses.length} 門課`;
+            
+            const totalCredits = currentSemCourses.reduce((sum, c) => sum + c.credits, 0);
+            document.getElementById("stat-total-credits").textContent = `${totalCredits} 學分`;
+
+            if (currentSemCourses.length > 0) {
+                const totalRate = currentSemCourses.reduce((sum, c) => {
+                    const r = c.registered > 0 ? (c.selected / c.registered) : 1;
+                    return sum + r;
+                }, 0);
+                const avgRate = (totalRate / currentSemCourses.length * 100).toFixed(1);
+                document.getElementById("stat-avg-rate").textContent = `${avgRate} %`;
+            } else {
+                document.getElementById("stat-avg-rate").textContent = "0.0 %";
+            }
+        }
+
+        // 變更清單排序方式
+        function changeSort(sortType) {
+            selectedSort = sortType;
+
+            ["default", "rate-desc", "rate-asc"].forEach(s => {
+                const btn = document.getElementById(`sort-btn-${s}`);
+                if (btn) {
+                    if (s === sortType) {
+                        btn.className = "px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold transition-all";
+                    } else {
+                        btn.className = "px-1.5 py-0.5 rounded hover:bg-slate-100 text-slate-600 transition-all";
+                    }
+                }
+            });
+
+            renderCoursePool();
+        }
+
+        // 開放 Modal
         function openSyncModal() {
             const savedUrl = localStorage.getItem(googleSheetUrlKey) || "";
-            document.getElementById("sheet-csv-url").value = savedUrl;
+            const input = document.getElementById("sheet-csv-url");
+            if (input) input.value = savedUrl;
             document.getElementById("sync-modal").classList.remove("hidden");
             document.getElementById("sync-modal").classList.add("flex");
         }
 
+        // 關閉 Modal
         function closeSyncModal() {
             document.getElementById("sync-modal").classList.remove("flex");
             document.getElementById("sync-modal").classList.add("hidden");
         }
 
-        // 動態生成並更新「開課班別」篩選下拉選單的選項
+        // 動態生成「開課班別」篩選選項
         function updateClassFilterOptions() {
             const select = document.getElementById("course-class-filter");
             if (!select) return;
 
-            // 取得當前資料庫中所有的獨特 className
+            // 取得當前所有班別
             const uniqueClasses = [...new Set(COURSES_DATABASE.map(c => c.className).filter(Boolean))].sort();
 
-            // 保留第一個預設選項，其餘清空
             select.innerHTML = '<option value="">所有開課班別</option>';
-
             uniqueClasses.forEach(className => {
                 const opt = document.createElement("option");
                 opt.value = className;
@@ -784,27 +1155,27 @@
             });
         }
 
-        // 當用戶要求恢復使用內置預設資料時
+        // 回復預設
         function resetToBuiltIn() {
             localStorage.removeItem(googleSheetUrlKey);
             COURSES_DATABASE = [...BUILTIN_COURSES_DATABASE];
-            document.getElementById("sheet-csv-url").value = "";
+            
+            const input = document.getElementById("sheet-csv-url");
+            if (input) input.value = "";
             
             document.getElementById("sync-status-indicator").innerHTML = "";
-            document.getElementById("sync-status-indicator").className = "font-semibold text-slate-400";
-            
             showToast("已回復為系統內建預設課程資料", "info");
             closeSyncModal();
             updateClassFilterOptions();
             resetGridFilter();
             updateStatistics();
         }
-    </script>
 
-    <script>
-        // 解析從雲端 Google Sheet 下載下來的 CSV 資料格式
+        // 解析 Google Sheets CSV 格式
         function parseGoogleCSV(csvRows) {
             const parsedDatabase = [];
+            if (!csvRows || csvRows.length < 2) return parsedDatabase;
+
             const headers = csvRows[0].map(h => h ? h.trim() : "");
             
             const getColIdx = (aliases) => {
@@ -896,6 +1267,7 @@
             return parsedDatabase;
         }
 
+        // 開始從 Google Sheet 同步
         function saveAndSyncSheet() {
             const url = document.getElementById("sheet-csv-url").value.trim();
             if (!url) {
@@ -904,7 +1276,7 @@
             }
 
             if (!url.startsWith("https://docs.google.com/")) {
-                showToast("非法的 Google Sheet 網址格式！請參照說明設定", "error");
+                showToast("非法的 Google Sheet 網址格式！", "error");
                 return;
             }
 
@@ -931,23 +1303,24 @@
                                 resetGridFilter();
                                 updateStatistics();
                             } else {
-                                showToast("CSV 解析失敗：未找到符合欄位格式的課程資料", "error");
+                                showToast("CSV 解析失敗：未找到符合格式的欄位", "error");
                             }
                         } catch (err) {
                             console.error(err);
-                            showToast("解析 Google 試算表時出錯，請確認格式是否相符", "error");
+                            showToast("解析失敗，請確認資料格式", "error");
                         }
                     } else {
-                        showToast("試算表內似乎是空的，請確認發布設定", "error");
+                        showToast("試算表內為空，請確認發布設定", "error");
                     }
                 },
                 error: function(err) {
                     console.error(err);
-                    showToast("讀取雲端試算表失敗，請確認是否已公開「發布到網路」", "error");
+                    showToast("讀取雲端試算表失敗，請確認發布狀態", "error");
                 }
             });
         }
 
+        // 開機自動同步
         function autoLoadCloudSheetOnStart() {
             const savedUrl = localStorage.getItem(googleSheetUrlKey);
             if (savedUrl) {
@@ -969,425 +1342,25 @@
                                     updateStatistics();
                                 }
                             } catch (e) {
-                                console.warn("自動載入雲端試算表出錯，降級為內建預設", e);
+                                console.warn("背景同步失敗，降級使用內建預設", e);
                             }
                         }
                     }
                 });
             }
         }
-    </script>
-
-    <script>
-        // 渲染 2~8 節的課表網格
-        function renderScheduleGrid() {
-            const tbody = document.getElementById("schedule-tbody");
-            tbody.innerHTML = "";
-
-            for (let period = 2; period <= 8; period++) {
-                const tr = document.createElement("tr");
-                tr.className = "border-b border-slate-200 hover:bg-slate-50/50 transition-colors duration-150";
-
-                // 節次格
-                const tdPeriod = document.createElement("td");
-                tdPeriod.className = "py-1.5 font-bold text-slate-500 border-r border-slate-200 bg-slate-100/50 text-xs flex flex-col justify-center items-center h-[76px] w-16 flex-shrink-0";
-                tdPeriod.innerHTML = `
-                    <div class="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">第</div>
-                    <div class="text-sm text-slate-700 font-extrabold my-0.5">${period}</div>
-                    <div class="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">節</div>
-                `;
-                tr.appendChild(tdPeriod);
-
-                // 星期一至星期五
-                for (let day = 1; day <= 5; day++) {
-                    const tdCell = document.createElement("td");
-                    tdCell.className = "p-1 border-r border-slate-200 relative align-middle transition-all duration-200 cursor-pointer grid-cell-active h-[76px]";
-                    tdCell.dataset.day = day;
-                    tdCell.dataset.period = period;
-
-                    const scheduledCourse = getScheduledCourseAt(currentSemester, day, period);
-                    const isSelectedCell = selectedGridCell && selectedGridCell.day === day && selectedGridCell.period === period;
-
-                    if (isSelectedCell) {
-                        tdCell.className += " ring-2 ring-indigo-500 ring-inset bg-indigo-50/50";
-                    }
-
-                    if (scheduledCourse) {
-                        const colorIdx = parseInt(scheduledCourse.id.replace(/\D/g, "") || "0") % colorPalette.length;
-                        const palette = colorPalette[colorIdx];
-                        
-                        tdCell.className += ` ${palette.bg}`;
-                        tdCell.innerHTML = `
-                            <div class="h-full flex flex-col justify-between p-1 rounded text-left text-[11px] transition-all duration-200 relative group/cell">
-                                <div class="overflow-hidden">
-                                    <div class="font-extrabold leading-tight text-slate-900 line-clamp-2 text-[10px] sm:text-[11px]" title="${scheduledCourse.name}">${scheduledCourse.name}</div>
-                                    <div class="text-[9px] opacity-75 mt-0.5 truncate font-medium text-slate-800">${scheduledCourse.professor} | ${scheduledCourse.location}</div>
-                                </div>
-                                <div class="flex justify-between items-center mt-0.5 pt-0.5 border-t border-black/5">
-                                    <span class="text-[9px] px-1 rounded bg-black/5 font-semibold truncate max-w-[70px]">${scheduledCourse.className}</span>
-                                    <button onclick="removeCourseEvent(event, '${scheduledCourse.id}')" class="text-rose-600 hover:text-white hover:bg-rose-500 w-3.5 h-3.5 rounded flex items-center justify-center transition-colors shadow-sm ml-1" title="移除課程">
-                                        <i class="fa-solid fa-xmark text-[9px]"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        tdCell.innerHTML = `
-                            <div class="h-full rounded border border-dashed border-slate-200 hover:border-indigo-400 text-slate-300 hover:text-indigo-500 transition-all duration-150 flex flex-col items-center justify-center py-2 group">
-                                <i class="fa-solid fa-plus text-[10px] opacity-0 group-hover:opacity-100 transform scale-75 hover:scale-100 transition-all mb-0.5"></i>
-                                <span class="text-[9px] font-medium opacity-30 hover:opacity-100">空堂</span>
-                            </div>
-                        `;
-                        tdCell.addEventListener("click", () => selectGridCell(day, period));
-                    }
-
-                    if (scheduledCourse) {
-                        tdCell.addEventListener("click", (e) => {
-                            if (!e.target.closest("button")) {
-                                selectGridCell(day, period);
-                            }
-                        });
-                    }
-
-                    tr.appendChild(tdCell);
-                }
-                tbody.appendChild(tr);
-            }
-        }
-
-        function getScheduledCourseAt(semester, day, period) {
-            return COURSES_DATABASE.find(course => 
-                userSchedule.includes(course.id) && 
-                course.semester === semester && 
-                course.day === day && 
-                course.periods.includes(period)
-            );
-        }
-
-        function selectGridCell(day, period) {
-            if (selectedGridCell && selectedGridCell.day === day && selectedGridCell.period === period) {
-                resetGridFilter();
-            } else {
-                selectedGridCell = { day, period };
-                document.getElementById("btn-clear-filter").classList.remove("hidden");
-                
-                const timeStr = `星期${dayToChinese[day]}第 ${period} 節`;
-                document.getElementById("stat-selected-time").textContent = timeStr;
-                document.getElementById("stat-selected-time").className = "text-xs font-bold text-indigo-600 truncate max-w-[120px]";
-                document.getElementById("pool-title").textContent = `【${timeStr}】可選課程`;
-
-                renderScheduleGrid();
-                renderCoursePool();
-            }
-        }
-
-        function resetGridFilter() {
-            selectedGridCell = null;
-            document.getElementById("btn-clear-filter").classList.add("hidden");
-            document.getElementById("stat-selected-time").textContent = "全部課程";
-            document.getElementById("stat-selected-time").className = "text-xs font-bold text-slate-500 truncate max-w-[120px]";
-            document.getElementById("pool-title").textContent = "所有開課總覽";
-
-            renderScheduleGrid();
-            renderCoursePool();
-        }
-
-        function switchSemester(sem) {
-            currentSemester = sem;
-            selectedGridCell = null;
-            document.getElementById("btn-clear-filter").classList.add("hidden");
-            
-            const btn1 = document.getElementById("btn-sem-1");
-            const btn2 = document.getElementById("btn-sem-2");
-            const label = document.getElementById("grid-semester-label");
-
-            if (sem === 1) {
-                btn1.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center bg-white text-indigo-600 shadow-sm";
-                btn2.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center text-slate-600 hover:text-slate-900";
-                label.textContent = "上學期";
-                label.className = "text-xs font-semibold px-2.5 py-1 rounded bg-indigo-100 text-indigo-800";
-            } else {
-                btn1.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center text-slate-600 hover:text-slate-900";
-                btn2.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center bg-white text-indigo-600 shadow-sm";
-                label.textContent = "下學期";
-                label.className = "text-xs font-semibold px-2.5 py-1 rounded bg-emerald-100 text-emerald-800";
-            }
-
-            document.getElementById("stat-selected-time").textContent = "全部課程";
-            document.getElementById("pool-title").textContent = "所有開課總覽";
-
-            renderScheduleGrid();
-            renderCoursePool();
-            updateStatistics();
-        }
-    </script>
-
-    <script>
-        function renderCoursePool() {
-            const container = document.getElementById("course-pool-container");
-            const placeholder = document.getElementById("no-courses-placeholder");
-            const countLabel = document.getElementById("showing-count");
-            
-            const searchValue = document.getElementById("course-search").value.trim().toLowerCase();
-            const natureValue = document.getElementById("course-nature-filter").value;
-            const classValue = document.getElementById("course-class-filter").value;
-
-            // 1. 基本過濾：學期
-            let filtered = COURSES_DATABASE.filter(c => c.semester === currentSemester);
-
-            // 2. 點選課表格子時的時段過濾
-            if (selectedGridCell) {
-                filtered = filtered.filter(c => 
-                    c.day === selectedGridCell.day && 
-                    c.periods.includes(selectedGridCell.period)
-                );
-            }
-
-            // 3. 搜尋模糊查詢
-            if (searchValue) {
-                filtered = filtered.filter(c => 
-                    c.name.toLowerCase().includes(searchValue) ||
-                    (c.englishName && c.englishName.toLowerCase().includes(searchValue)) ||
-                    c.professor.toLowerCase().includes(searchValue) ||
-                    c.location.toLowerCase().includes(searchValue) ||
-                    c.code.toLowerCase().includes(searchValue) ||
-                    (c.className && c.className.toLowerCase().includes(searchValue))
-                );
-            }
-
-            // 4. 課程性質過濾
-            if (natureValue) {
-                filtered = filtered.filter(c => c.nature === natureValue);
-            }
-
-            // 5. 開課班別過濾
-            if (classValue) {
-                filtered = filtered.filter(c => c.className === classValue);
-            }
-
-            // 6. 排序演算法
-            if (selectedSort === "rate-desc") {
-                filtered.sort((a, b) => {
-                    const rateA = a.registered > 0 ? (a.selected / a.registered) : 0;
-                    const rateB = b.registered > 0 ? (b.selected / b.registered) : 0;
-                    return rateB - rateA;
-                });
-            } else if (selectedSort === "rate-asc") {
-                filtered.sort((a, b) => {
-                    const rateA = a.registered > 0 ? (a.selected / a.registered) : 0;
-                    const rateB = b.registered > 0 ? (b.selected / b.registered) : 0;
-                    return rateA - rateB;
-                });
-            }
-
-            container.innerHTML = "";
-            countLabel.textContent = `顯示 ${filtered.length} 門課`;
-
-            if (filtered.length === 0) {
-                placeholder.classList.remove("hidden");
-                placeholder.classList.add("flex");
-                return;
-            } else {
-                placeholder.classList.remove("flex");
-                placeholder.classList.add("hidden");
-            }
-
-            filtered.forEach(c => {
-                const isAlreadyAdded = userSchedule.includes(c.id);
-                const rate = c.registered > 0 ? (c.selected / c.registered * 100).toFixed(1) : "100.0";
-                
-                let badgeClass = "bg-slate-100 text-slate-700";
-                if (c.nature.includes("必修")) badgeClass = "bg-rose-100 text-rose-800";
-                else if (c.nature.includes("選修")) badgeClass = "bg-sky-100 text-sky-800";
-                else if (c.nature.includes("師培")) badgeClass = "bg-emerald-100 text-emerald-800";
-
-                const card = document.createElement("div");
-                card.className = `p-3 rounded-lg border text-xs transition-all relative ${
-                    isAlreadyAdded 
-                    ? "bg-slate-50 border-slate-200 opacity-65" 
-                    : "bg-white hover:bg-indigo-50/20 border-slate-200 shadow-sm hover:shadow hover:-translate-y-0.5"
-                }`;
-
-                card.innerHTML = `
-                    <div class="flex flex-col gap-1.5">
-                        <div class="flex justify-between items-start gap-2">
-                            <div>
-                                <span class="text-[9px] font-bold text-slate-400 mr-1">${c.code}</span>
-                                <span class="font-extrabold text-slate-800 text-xs sm:text-sm">${c.name}</span>
-                            </div>
-                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 ${badgeClass}">${c.nature}</span>
-                        </div>
-                        
-                        <div class="text-[11px] text-slate-500 space-y-0.5">
-                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                <span class="flex items-center gap-1 font-semibold text-slate-700">
-                                    <i class="fa-solid fa-user-tie text-slate-400"></i> ${c.professor}
-                                </span>
-                                <span class="flex items-center gap-1">
-                                    <i class="fa-solid fa-graduation-cap text-slate-400"></i> ${c.className}
-                                </span>
-                                <span class="flex items-center gap-1">
-                                    <i class="fa-solid fa-gem text-amber-500"></i> ${c.credits} 學分
-                                </span>
-                                ${c.englishClass === "是" ? `<span class="bg-violet-100 text-violet-800 px-1 py-0.2 rounded text-[9px] font-bold">全英語</span>` : ""}
-                            </div>
-                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                <span class="text-indigo-600 font-bold bg-indigo-50 px-1 py-0.2 rounded">
-                                    <i class="fa-solid fa-clock"></i> 星期${dayToChinese[c.day]} 第 ${c.periods.join(',')} 節
-                                </span>
-                                <span class="text-slate-600 bg-slate-100 px-1 py-0.2 rounded truncate max-w-[240px]" title="${c.location}">
-                                    <i class="fa-solid fa-location-dot"></i> ${c.location}
-                                </span>
-                            </div>
-                        </div>
-
-                        <!-- 錄取率與人數動態進度條 -->
-                        <div class="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-4 mt-1">
-                            <div class="flex flex-col gap-0.5 flex-grow">
-                                <div class="flex justify-between text-[10px] text-slate-500">
-                                    <span>預估選上率: <strong class="text-indigo-600">${rate}%</strong></span>
-                                    <span>${c.selected} / ${c.registered} (選上/登記)</span>
-                                </div>
-                                <div class="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-                                    <div class="bg-indigo-600 h-full" style="width: ${Math.min(parseFloat(rate), 100)}%"></div>
-                                </div>
-                            </div>
-                            
-                            <div>
-                                ${isAlreadyAdded 
-                                    ? `<button onclick="removeCourse('${c.id}')" class="bg-slate-200 hover:bg-rose-600 hover:text-white text-slate-600 text-[10px] font-extrabold px-2 py-1 rounded transition-all flex items-center gap-1 group">
-                                         <i class="fa-solid fa-check group-hover:hidden"></i>
-                                         <i class="fa-solid fa-trash-can hidden group-hover:inline"></i>
-                                         <span>已加入</span>
-                                       </button>`
-                                    : `<button onclick="addCourse('${c.id}')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-extrabold px-2.5 py-1 rounded shadow-sm hover:shadow transition-all flex items-center gap-1">
-                                         <i class="fa-solid fa-plus"></i>
-                                         <span>加入課表</span>
-                                       </button>`
-                                }
-                            </div>
-                        </div>
-
-                        ${c.remarks ? `
-                        <div class="text-[9px] bg-amber-50 text-amber-800 rounded p-1 border border-amber-100/50 mt-1 flex gap-1 items-start">
-                            <i class="fa-solid fa-circle-exclamation mt-0.5 flex-shrink-0 text-amber-500"></i>
-                            <span class="line-clamp-1 hover:line-clamp-none transition-all cursor-help">${c.remarks}</span>
-                        </div>` : ""}
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-    </script>
-
-    <script>
-        function addCourse(courseId) {
-            const cToAdd = COURSES_DATABASE.find(c => c.id === courseId);
-            if (!cToAdd) return;
-
-            for (let period of cToAdd.periods) {
-                const conflict = getScheduledCourseAt(cToAdd.semester, cToAdd.day, period);
-                if (conflict) {
-                    showToast(`選課衝突！該時段（星期${dayToChinese[cToAdd.day]}第${period}節）已安排「${conflict.name}」！`, "error");
-                    return;
-                }
-            }
-
-            userSchedule.push(courseId);
-            saveSchedule();
-            showToast(`已排入課程：「${cToAdd.name}」！`);
-
-            renderScheduleGrid();
-            renderCoursePool();
-            updateStatistics();
-        }
-
-        function removeCourse(courseId) {
-            const course = COURSES_DATABASE.find(c => c.id === courseId);
-            userSchedule = userSchedule.filter(id => id !== courseId);
-            saveSchedule();
-            
-            if (course) {
-                showToast(`已將「${course.name}」移出課表。`, "info");
-            }
-
-            renderScheduleGrid();
-            renderCoursePool();
-            updateStatistics();
-        }
-
-        function removeCourseEvent(event, courseId) {
-            event.stopPropagation();
-            removeCourse(courseId);
-        }
-
-        function saveSchedule() {
-            localStorage.setItem(localStorageKey, JSON.stringify(userSchedule));
-        }
-
-        function clearSchedule() {
-            const termCourses = COURSES_DATABASE.filter(c => c.semester === currentSemester && userSchedule.includes(c.id));
-            if (termCourses.length === 0) {
-                showToast("您當前學期的課表內本就是空的！", "info");
-                return;
-            }
-
-            userSchedule = userSchedule.filter(id => {
-                const c = COURSES_DATABASE.find(course => course.id === id);
-                return c && c.semester !== currentSemester;
-            });
-            
-            saveSchedule();
-            showToast("當前學期課表已全部清空！", "info");
-
-            renderScheduleGrid();
-            renderCoursePool();
-            updateStatistics();
-        }
-
-        function updateStatistics() {
-            const currentSemCourses = COURSES_DATABASE.filter(c => 
-                userSchedule.includes(c.id) && c.semester === currentSemester
-            );
-
-            document.getElementById("stat-course-count").textContent = `${currentSemCourses.length} 門課`;
-            
-            const totalCredits = currentSemCourses.reduce((sum, c) => sum + c.credits, 0);
-            document.getElementById("stat-total-credits").textContent = `${totalCredits} 學分`;
-
-            if (currentSemCourses.length > 0) {
-                const totalRate = currentSemCourses.reduce((sum, c) => {
-                    const r = c.registered > 0 ? (c.selected / c.registered) : 1;
-                    return sum + r;
-                }, 0);
-                const avgRate = (totalRate / currentSemCourses.length * 100).toFixed(1);
-                document.getElementById("stat-avg-rate").textContent = `${avgRate} %`;
-            } else {
-                document.getElementById("stat-avg-rate").textContent = "0.0 %";
-            }
-        }
-
-        function changeSort(sortType) {
-            selectedSort = sortType;
-
-            ["default", "rate-desc", "rate-asc"].forEach(s => {
-                const btn = document.getElementById(`sort-btn-${s}`);
-                if (s === sortType) {
-                    btn.className = "px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold transition-all";
-                } else {
-                    btn.className = "px-1.5 py-0.5 rounded hover:bg-slate-100 text-slate-600 transition-all";
-                }
-            });
-
-            renderCoursePool();
-        }
 
         // 頁面初次載入
         window.onload = function() {
+            // 首先動態更新班別過濾選單
             updateClassFilterOptions();
+            // 繪製課表
             renderScheduleGrid();
+            // 繪製課程清單
             renderCoursePool();
+            // 計算初始統計
             updateStatistics();
+            // 開始背景同步檢查
             autoLoadCloudSheetOnStart();
         };
     </script>
