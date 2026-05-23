@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>課表工具</title>
+    <!-- 引入 Tailwind CSS 與 Font Awesome 圖示 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- 引入 PapaParse 解析 CSV 工具 (用於解析 Google Sheets 匯出的 CSV) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #f1f5f9;
+        }
+        /* 美化滾動條 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f8fafc;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .grid-cell-active {
+            transition: all 0.2s ease-in-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col text-slate-800">
+
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+        <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-md flex items-center justify-center">
+                    <i class="fa-solid fa-graduation-cap text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-extrabold text-slate-900 tracking-tight">
+                        課表工具
+                    </h1>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <!-- Google Sheet 同步按鈕 (僅圖示，含美化 Tooltip) -->
+                <div class="relative group">
+                    <button onclick="openSyncModal()" class="w-10 h-10 rounded-full border border-indigo-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 flex items-center justify-center transition-all shadow-sm">
+                        <i class="fa-solid fa-cloud-arrow-down text-lg"></i>
+                    </button>
+                    <!-- Tooltip -->
+                    <span class="absolute bottom-[-38px] left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[11px] px-2 py-1 rounded shadow-md opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+                        Google Sheet 同步
+                    </span>
+                </div>
+
+                <!-- 清空目前課表 (僅圖示，含美化 Tooltip) -->
+                <div class="relative group">
+                    <button onclick="clearSchedule()" class="w-10 h-10 rounded-full border border-rose-200 text-rose-600 hover:text-rose-700 hover:bg-rose-50 flex items-center justify-center transition-all shadow-sm">
+                        <i class="fa-solid fa-trash-can text-lg"></i>
+                    </button>
+                    <!-- Tooltip -->
+                    <span class="absolute bottom-[-38px] left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[11px] px-2 py-1 rounded shadow-md opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+                        清空目前課表
+                    </span>
+                </div>
+
+                <!-- 匯出課表 (僅圖示，含美化 Tooltip) -->
+                <div class="relative group">
+                    <button onclick="exportSchedule()" class="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all shadow-md hover:shadow-lg">
+                        <i class="fa-solid fa-file-export text-lg"></i>
+                    </button>
+                    <!-- Tooltip -->
+                    <span class="absolute bottom-[-38px] left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[11px] px-2 py-1 rounded shadow-md opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+                        匯出課表
+                    </span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col gap-4 overflow-hidden">
+        
+        <!-- 學期切換與數據儀表板 -->
+        <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm flex flex-col lg:flex-row justify-between items-center gap-4">
+            <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+                <div class="bg-slate-100 p-1 rounded-xl flex w-full sm:w-auto shadow-inner">
+                    <button id="btn-sem-1" onclick="switchSemester(1)" class="flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 bg-white text-indigo-600 shadow-sm">
+                        <i class="fa-solid fa-leaf text-amber-500"></i>
+                        第一學期 (上學期)
+                    </button>
+                    <button id="btn-sem-2" onclick="switchSemester(2)" class="flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900">
+                        <i class="fa-solid fa-seedling text-emerald-500"></i>
+                        第二學期 (下學期)
+                    </button>
+                </div>
+                <div class="text-xs text-slate-500 text-center sm:text-left flex flex-col sm:flex-row gap-1 sm:gap-3">
+                    <span>
+                        <i class="fa-solid fa-info-circle text-indigo-500 mr-1"></i>
+                        點擊課表時段可快速過濾右側對應課程。
+                    </span>
+                    <!-- 雲端同步狀態指示燈 -->
+                    <span id="sync-status-indicator" class="font-semibold text-slate-400">
+                        <i class="fa-solid fa-circle text-[9px] mr-1"></i>資料來源：內建預設
+                    </span>
+                </div>
+            </div>
+
+            <!-- 數據統計 -->
+            <div class="flex items-center gap-3 sm:gap-6 w-full lg:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-2 sm:pt-0">
+                <div class="text-center sm:text-left">
+                    <p class="text-[10px] text-slate-400 font-semibold uppercase">已選課</p>
+                    <h3 id="stat-course-count" class="text-sm font-bold text-slate-800">0 門</h3>
+                </div>
+                <div class="h-6 w-px bg-slate-200"></div>
+                <div class="text-center sm:text-left">
+                    <p class="text-[10px] text-slate-400 font-semibold uppercase">總學分數</p>
+                    <h3 id="stat-total-credits" class="text-sm font-bold text-slate-800">0 學分</h3>
+                </div>
+                <div class="h-6 w-px bg-slate-200"></div>
+                <div class="text-center sm:text-left">
+                    <p class="text-[10px] text-slate-400 font-semibold uppercase">平均選上率</p>
+                    <h3 id="stat-avg-rate" class="text-sm font-bold text-emerald-600">0.0 %</h3>
+                </div>
+                <div class="h-6 w-px bg-slate-200"></div>
+                <div class="text-center sm:text-left">
+                    <p class="text-[10px] text-slate-400 font-semibold uppercase">當前篩選時段</p>
+                    <h3 id="stat-selected-time" class="text-xs font-bold text-indigo-600 truncate max-w-[120px]">全部課程</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- 左右大並排區塊 (網格佈局 7:5) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch flex-grow overflow-y-auto lg:overflow-hidden lg:h-[calc(100vh-180px)] min-h-0">
+            
+            <!-- 左側：一週課表 (佔 7/12)，手機版也完整保留並可橫向滾動 -->
+            <div class="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[500px] lg:h-full">
+                <div class="p-3 border-b border-slate-200 flex justify-between items-center bg-slate-50/80">
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></span>
+                        <h3 class="font-bold text-slate-800 text-sm">學期功課表 (第 2 至 8 節)</h3>
+                    </div>
+                    <span id="grid-semester-label" class="text-xs font-semibold px-2.5 py-1 rounded bg-indigo-100 text-indigo-800">第一學期</span>
+                </div>
+                
+                <!-- 手機版加強橫向滾動機制，確保課表不消失 -->
+                <div class="overflow-x-auto flex-grow bg-slate-50/30">
+                    <table class="w-full border-collapse text-center table-fixed min-w-[640px] h-full">
+                        <thead>
+                            <tr class="bg-slate-100/80 border-b border-slate-200">
+                                <th class="w-16 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-r border-slate-200">節次</th>
+                                <th class="py-2 text-xs font-bold text-slate-700">星期一</th>
+                                <th class="py-2 text-xs font-bold text-slate-700">星期二</th>
+                                <th class="py-2 text-xs font-bold text-slate-700">星期三</th>
+                                <th class="py-2 text-xs font-bold text-slate-700">星期四</th>
+                                <th class="py-2 text-xs font-bold text-slate-700">星期五</th>
+                            </tr>
+                        </thead>
+                        <tbody id="schedule-tbody">
+                            <!-- 由 JavaScript 動態繪製第 2 ~ 8 節 -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-3 bg-slate-50 border-t border-slate-150 text-[11px] text-slate-500 flex justify-between items-center">
+                    <span class="truncate">💡 點選課表格子，右側即刻篩選對應科目！</span>
+                    <button onclick="resetGridFilter()" class="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 transition-all flex-shrink-0">
+                        <i class="fa-solid fa-rotate-left"></i> 重設篩選 (顯示全部)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 右側：課程選課區 (佔 5/12)，採用 min-h-0 以修復滾動溢出問題 -->
+            <div class="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col h-[600px] lg:h-full min-h-0">
+                
+                <!-- 搜尋與篩選狀態 -->
+                <div class="flex flex-col gap-3 pb-3 border-b border-slate-150">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-layer-group text-slate-500"></i>
+                            <span id="pool-title">所有開課總覽</span>
+                        </h3>
+                        <button id="btn-clear-filter" onclick="resetGridFilter()" class="hidden text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-semibold transition-all">
+                            全部課程 <i class="fa-solid fa-xmark ml-1"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- 搜尋與過濾條件輸入 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <!-- 關鍵字搜尋 -->
+                        <div class="relative sm:col-span-1">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="text" id="course-search" oninput="renderCoursePool()" placeholder="搜尋課程、教師..." class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                        </div>
+                        <!-- 課程性質過濾 -->
+                        <div>
+                            <select id="course-nature-filter" onchange="renderCoursePool()" class="w-full py-1.5 px-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-600 bg-white">
+                                <option value="">所有課程性質</option>
+                                <option value="系必修">系必修</option>
+                                <option value="系選修">系選修</option>
+                                <option value="組必修">組必修</option>
+                                <option value="組選修">組選修</option>
+                                <option value="師培選修">師培選修</option>
+                            </select>
+                        </div>
+                        <!-- 開課班別過濾 -->
+                        <div>
+                            <select id="course-class-filter" onchange="renderCoursePool()" class="w-full py-1.5 px-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-600 bg-white">
+                                <option value="">所有開課班別</option>
+                                <!-- JavaScript 動態生成 -->
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 排序切換器 -->
+                    <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                        <div class="flex items-center gap-1">
+                            <span>排序：</span>
+                            <button onclick="changeSort('default')" id="sort-btn-default" class="px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold transition-all">預設</button>
+                            <button onclick="changeSort('rate-desc')" id="sort-btn-rate-desc" class="px-1.5 py-0.5 rounded hover:bg-slate-100 text-slate-600 transition-all">錄取率 (高→低)</button>
+                            <button onclick="changeSort('rate-asc')" id="sort-btn-rate-asc" class="px-1.5 py-0.5 rounded hover:bg-slate-100 text-slate-600 transition-all">錄取率 (低→高)</button>
+                        </div>
+                        <span id="showing-count" class="text-slate-400">顯示 0 門課</span>
+                    </div>
+                </div>
+
+                <!-- 課程流動清單：修復高度未收縮導致無法滾動的問題 -->
+                <div id="course-pool-container" class="space-y-2.5 overflow-y-auto pr-1 py-3 flex-grow min-h-0">
+                    <!-- 動態渲染課程項目 -->
+                </div>
+
+                <!-- 當沒有課程時的顯示 -->
+                <div id="no-courses-placeholder" class="hidden flex-col items-center justify-center py-16 text-center flex-grow">
+                    <div class="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-2">
+                        <i class="fa-solid fa-ban text-lg"></i>
+                    </div>
+                    <h4 class="font-bold text-slate-700 text-xs sm:text-sm">查無課程</h4>
+                    <p class="text-[11px] text-slate-400 max-w-[200px] mt-1">目前該時段或篩選條件下，沒有符合的課程。</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Google Sheet 設定 Modal -->
+    <div id="sync-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 items-center justify-center hidden">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg p-6 m-4 animate-in fade-in zoom-in-95 duration-200">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2 text-indigo-600">
+                    <i class="fa-solid fa-cloud-arrow-down text-xl"></i>
+                    <h3 class="font-bold text-slate-900 text-base sm:text-lg">Google 試算表雲端同步設定</h3>
+                </div>
+                <button onclick="closeSyncModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <div class="space-y-4 text-xs sm:text-sm text-slate-600">
+                <div class="bg-indigo-50/50 rounded-xl p-3.5 border border-indigo-100 leading-relaxed space-y-2">
+                    <p class="font-bold text-indigo-900 flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-question"></i>如何取得您的 CSV 連結？
+                    </p>
+                    <ol class="list-decimal pl-4 space-y-1 text-xs text-indigo-950/80">
+                        <li>在 Google 試算表中，點擊 <strong>「檔案」 -> 「共用」 -> 「發布到網路」</strong>。</li>
+                        <li>選取對應的工作表，並將右側格式選取為 <strong>「逗號分隔值 (.csv)」</strong>。</li>
+                        <li>點擊發布並複製產生的 <code>https://docs.google.com/...</code> 連結網址。</li>
+                        <li>將該連結貼在下方輸入框中，點擊同步按鈕。</li>
+                    </ol>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Google Sheet CSV 連結網址：</label>
+                    <input type="url" id="sheet-csv-url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-mono">
+                </div>
+
+                <div class="flex gap-2 justify-end pt-2">
+                    <button onclick="resetToBuiltIn()" class="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-2 hover:bg-slate-100 rounded-lg transition-all">
+                        回復預設資料
+                    </button>
+                    <button onclick="saveAndSyncSheet()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-rotate"></i> 開始同步
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 自訂美化通知視窗 -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- 頁尾 -->
+    <footer class="bg-white border-t border-slate-200 py-3 mt-auto">
+        <div class="max-w-[1600px] mx-auto px-4 text-center text-[11px] text-slate-400">
+            <p>© 2026 卓越大學課表設計及排課規劃系統 · 專屬研究所及教育學程專用板</p>
+        </div>
+    </footer>
+
+    <script>
+        // 本機預設之課程資料，若無同步 Google Sheet 則以此載入
+        const BUILTIN_COURSES_DATABASE = [
+            // ============ 第一學期 (上學期) ============
+            {
+                id: "111076_1_1", semester: 1, code: "111076", className: "輔導碩博",
+                name: "表創性藝術治療評估與處遇",
+                englishName: "Expressive-Creative Arts Therapies Assessment and Intervention",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "吳明富",
+                location: "明德館 B1多功能教室", day: 4, periods: [2, 3, 4],
+                limit: 20, registered: 7, selected: 19, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111073_1_2", semester: 1, code: "211073", className: "輔導碩博",
+                name: "團體藝術治療研究",
+                englishName: "Seminar in Group Art Therapy",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "吳明富",
+                location: "明德館 B1多功能教室", day: 2, periods: [2, 3, 4],
+                limit: 20, registered: 14, selected: 25, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111052_1_3", semester: 1, code: "111052", className: "輔碩一",
+                name: "研究方法",
+                englishName: "Research Methods",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "劉淑慧",
+                location: "明德館 214視聽教室", day: 4, periods: [2, 3, 4],
+                limit: 22, registered: 9, selected: 22, crossClass: "否",
+                remarks: "限本班本課程與婚碩一[研究方法]修習人數請均衡。"
+            },
+            {
+                id: "111051_1_4", semester: 1, code: "111051", className: "輔碩一",
+                name: "學術定向與專業成長",
+                englishName: "Academic and Professional Development",
+                nature: "系必修", englishClass: "否", credits: 1, professor: "張泰銓",
+                location: "明德館演講廳", day: 3, periods: [5, 6],
+                limit: 45, registered: 43, selected: 42, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111050_1_5", semester: 1, code: "111050", className: "輔碩一",
+                name: "諮商理論研究",
+                englishName: "Theories in Counseling",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "林淑君",
+                location: "明德館 214視聽教室", day: 1, periods: [6, 7, 8],
+                limit: 24, registered: 27, selected: 27, crossClass: "否",
+                remarks: "限本班本課程與婚碩一[諮商理論研究]修習人數請均衡。先備科目為學士班的[諮商技巧](實務課程)。"
+            },
+            {
+                id: "111082_1_6", semester: 1, code: "111082", className: "輔碩二",
+                name: "表創性藝術治療倫理與督導",
+                englishName: "Expressive-Creative Arts Therapies Ethics and Supervision",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "吳明富",
+                location: "明德館 博士班教室二", day: 4, periods: [6, 7, 8],
+                limit: 20, registered: 2, selected: 4, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111079_1_7", semester: 1, code: "211079", className: "輔導碩博",
+                name: "多元文化諮商研究",
+                englishName: "Seminar in Multicultural Counseling",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "王翊涵",
+                location: "明德館 博士班教室二", day: 3, periods: [2, 3, 4],
+                limit: 20, registered: 2, selected: 8, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111078_1_8", semester: 1, code: "311078", className: "輔導碩博",
+                name: "榮格心理治療專題研究",
+                englishName: "Seminar of Jungian Psychotherapy",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "陳雪均",
+                location: "明德館 測驗實務教室", day: 3, periods: [2, 3, 4],
+                limit: 20, registered: 11, selected: 10, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111077_1_9", semester: 1, code: "411077", className: "輔導碩博",
+                name: "結構方程模式專題研究",
+                englishName: "Structural Equation Modeling",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "林清文",
+                location: "明德館 博士班教室一", day: 2, periods: [2, 3, 4],
+                limit: 20, registered: 1, selected: 8, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111075_1_10", semester: 1, code: "511075", className: "輔導碩博",
+                name: "性別暴力防治專題研究",
+                englishName: "Seminar in Gender-based Violence Prevention",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "葉怡伶",
+                location: "明德館 博士班教室一", day: 4, periods: [6, 7, 8],
+                limit: 20, registered: 0, selected: 2, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111074_1_11", semester: 1, code: "611074", className: "輔導碩博",
+                name: "生涯輔導與諮商研究",
+                englishName: "Study on Career Guidance and Counseling",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "鄧志平",
+                location: "明德館 博士班教室二", day: 2, periods: [6, 7, 8],
+                limit: 20, registered: 13, selected: 23, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111059_1_12", semester: 1, code: "711059", className: "輔碩二",
+                name: "諮商實習(B)",
+                englishName: "Counseling Practicum (B)",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "陳尚綾",
+                location: "明德館 碩士班教室一", day: 4, periods: [7, 8],
+                limit: 20, registered: 7, selected: 15, crossClass: "否",
+                remarks: "限本班請依本系相關實習實作辦法加選"
+            },
+            {
+                id: "111058_1_13", semester: 1, code: "811058", className: "輔碩二",
+                name: "諮商倫理與法規研究",
+                englishName: "Seminar on Ethical & Legal Issues in Counseling",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "韓楷檉",
+                location: "明德館 碩士班教室一", day: 4, periods: [2, 3, 4],
+                limit: 25, registered: 20, selected: 18, crossClass: "否",
+                remarks: "限本班"
+            },
+            {
+                id: "111057_1_14", semester: 1, code: "911057", className: "輔碩二",
+                name: "心理評量研究",
+                englishName: "Measurement and Appraisal in Counseling",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "張泰銓、陳繼成",
+                location: "明德館 測驗實務教室", day: 1, periods: [5, 6, 7],
+                limit: 24, registered: 28, selected: 24, crossClass: "否",
+                remarks: "限本班"
+            },
+            {
+                id: "111056_1_15", semester: 1, code: "1011056", className: "輔碩二",
+                name: "諮商實習(A)",
+                englishName: "Counseling Practicum (A)",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "陳尚綾",
+                location: "明德館 碩士班教室一", day: 1, periods: [2, 3, 4],
+                limit: 20, registered: 24, selected: 15, crossClass: "否",
+                remarks: "限本班此課程有擋修"
+            },
+            {
+                id: "11562_1_16", semester: 1, code: "11562", className: "教育學程",
+                name: "特殊教育導論(陳)",
+                nature: "師培選修", englishClass: "否", credits: 3, professor: "陳怡慧、周婉琪",
+                location: "教學大樓 T104", day: 4, periods: [9],
+                limit: 50, registered: 13, selected: 32, crossClass: "是",
+                remarks: "第一階段僅開放大三以上選課"
+            },
+            {
+                id: "11561_1_17", semester: 1, code: "12561", className: "教育學程",
+                name: "特殊教育導論(王)",
+                nature: "師培選修", englishClass: "否", credits: 3, professor: "王智弘",
+                location: "明德館 11401", day: 2, periods: [2, 3, 4],
+                limit: 150, registered: 11, selected: 17, crossClass: "是",
+                remarks: "第一階段開放大三以上師資生選課"
+            },
+            {
+                id: "12561_1_18", semester: 1, code: "13501", className: "教育學程",
+                name: "特殊教育導論(邱)",
+                nature: "師培選修", englishClass: "否", credits: 3, professor: "邱進興",
+                location: "教學大樓 T103", day: 2, periods: [9],
+                limit: 50, registered: 45, selected: 53, crossClass: "是",
+                remarks: "第一階段開放大三以上師資生選課"
+            },
+            {
+                id: "111068_1_19", semester: 1, code: "311068", className: "輔碩三",
+                name: "駐地實習A甲組",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "賀孝銘",
+                location: "明德館 博士班教室二", day: 5, periods: [6, 7, 8],
+                limit: 20, registered: 12, selected: 12, crossClass: "否",
+                remarks: "需前學期通過全職實習申請者"
+            },
+            {
+                id: "111067_1_20", semester: 1, code: "411067", className: "輔碩三",
+                name: "駐地實習A乙組",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "羅家玲",
+                location: "明德館 團諮室1", day: 5, periods: [3, 4, 5],
+                limit: 20, registered: 12, selected: 12, crossClass: "否",
+                remarks: "前學期通過全職實習申請者"
+            },
+            {
+                id: "111066_1_21", semester: 1, code: "511066", className: "輔碩三",
+                name: "駐地實習A丙組",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "賀孝銘",
+                location: "明德館 博士班教室二", day: 1, periods: [6, 7, 8],
+                limit: 20, registered: 11, selected: 12, crossClass: "否",
+                remarks: "前學期通過全職實習申請者"
+            },
+            {
+                id: "111055_1_22", semester: 1, code: "111055", className: "輔婚家碩一",
+                name: "研究方法(婚)",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "劉淑慧",
+                location: "明德館 214視聽教室", day: 4, periods: [6, 7, 8],
+                limit: 22, registered: 16, selected: 22, crossClass: "否",
+                remarks: "本課程與輔碩一研究方法修習人數請均衡"
+            },
+            {
+                id: "111054_1_23", semester: 1, code: "211054", className: "輔婚家碩一",
+                name: "伴侶、婚姻與家庭研究",
+                nature: "組必修", englishClass: "否", credits: 3, professor: "趙淑珠",
+                location: "明德館 11201", day: 3, periods: [2, 3, 4],
+                limit: 20, registered: 22, selected: 22, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111053_1_24", semester: 1, code: "311053", className: "輔婚家碩一",
+                name: "諮商理論研究(婚)",
+                nature: "組選修", englishClass: "否", credits: 3, professor: "林淑華",
+                location: "明德館 碩士班教室一", day: 2, periods: [2, 3, 4],
+                limit: 20, registered: 18, selected: 20, crossClass: "否",
+                remarks: "本課程與輔碩一諮商理論研究修習人數請均衡"
+            },
+            {
+                id: "111083_1_25", semester: 1, code: "111083", className: "輔導碩博",
+                name: "質性研究",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "趙淑珠",
+                location: "明德館 博士班教室二", day: 2, periods: [2, 3, 4],
+                limit: 20, registered: 2, selected: 10, crossClass: "否",
+                remarks: "限本班"
+            },
+            {
+                id: "111064_1_26", semester: 1, code: "311064", className: "輔婚家碩二",
+                name: "結構學派家族治療",
+                nature: "組選修", englishClass: "否", credits: 3, professor: "董智慧",
+                location: "明德館 碩士班教室一", day: 3, periods: [2, 3, 4],
+                limit: 20, registered: 1, selected: 8, crossClass: "否",
+                remarks: "婚家碩班之特色專長領域選備課程"
+            },
+            {
+                id: "111063_1_27", semester: 1, code: "411063", className: "輔婚家碩二",
+                name: "伴侶諮商研究",
+                nature: "組必修", englishClass: "否", credits: 3, professor: "鄧志平、陳姝蓉、趙淑珠",
+                location: "明德館 碩士班教室一", day: 3, periods: [6, 7],
+                limit: 20, registered: 11, selected: 11, crossClass: "否",
+                remarks: "部份週次調整至週六上課"
+            },
+            {
+                id: "111062_1_28", semester: 1, code: "511062", className: "輔婚家碩二",
+                name: "性諮商研究",
+                nature: "組選修", englishClass: "否", credits: 3, professor: "程婉若",
+                location: "明德館 碩士班教室一", day: 1, periods: [6, 7, 8],
+                limit: 20, registered: 5, selected: 10, crossClass: "否",
+                remarks: "婚家碩班特色專長領域課程"
+            },
+            {
+                id: "111061_1_29", semester: 1, code: "611061", className: "輔婚家碩二",
+                name: "諮商實務(婚)",
+                nature: "組必修", englishClass: "否", credits: 3, professor: "陳雪均",
+                location: "明德館 博士班教室二", day: 2, periods: [2, 3, 4],
+                limit: 20, registered: 0, selected: 10, crossClass: "否",
+                remarks: "先修科目為[家庭諮商研究]"
+            },
+
+            // ============ 第二學期 (下學期) ============
+            {
+                id: "111069_2_1", semester: 2, code: "111069", className: "輔碩二",
+                name: "正念心理治療研究",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "陳尚綾",
+                location: "明德館 測驗實務教室", day: 5, periods: [6, 7, 8],
+                limit: 20, registered: 2, selected: 12, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "211064_2_2", semester: 2, code: "211064", className: "輔婚家碩一",
+                name: "創造性家族藝術治療",
+                nature: "組選修", englishClass: "否", credits: 3, professor: "吳明富",
+                location: "明德館 B1多功能教室", day: 2, periods: [2, 3, 4],
+                limit: 20, registered: 18, selected: 18, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111056_2_3", semester: 2, code: "311056", className: "輔導碩博",
+                name: "遊戲治療研究",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "林淑君",
+                location: "綜中-團體工作室", day: 1, periods: [2, 3, 4],
+                limit: 20, registered: 4, selected: 23, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111053_2_4", semester: 2, code: "411053", className: "輔導碩博",
+                name: "身體取向心理治療研究",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "陳雪均",
+                location: "明德館 團體諮商室", day: 3, periods: [2, 3, 4],
+                limit: 20, registered: 3, selected: 4, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111061_2_5", semester: 2, code: "111061", className: "輔碩一",
+                name: "團體諮商研究",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "羅家玲",
+                location: "明德館 團體諮商室", day: 4, periods: [2, 3, 4],
+                limit: 20, registered: 27, selected: 24, crossClass: "否",
+                remarks: "兩班團諮研究選修人數盡量均衡"
+            },
+            {
+                id: "211060_2_6", semester: 2, code: "211060", className: "輔碩一",
+                name: "諮商實務A",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "陳尚綾",
+                location: "明德館 個別諮商室", day: 5, periods: [2, 3, 4],
+                limit: 20, registered: 0, selected: 14, crossClass: "否",
+                remarks: "此課程有擋修(先修：諮商理論研究)"
+            },
+            {
+                id: "311059_2_7", semester: 2, code: "311059", className: "輔碩一",
+                name: "諮商實務B",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "林淑華",
+                location: "明德館 個別諮商室", day: 3, periods: [2, 3, 4],
+                limit: 20, registered: 19, selected: 22, crossClass: "否",
+                remarks: "此課程有擋修(先修：諮商理論研究)"
+            },
+            {
+                id: "411058_2_8", semester: 2, code: "411058", className: "輔碩一",
+                name: "高級統計學",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "張泰銓",
+                location: "明德館 測驗實務教室", day: 2, periods: [5, 6, 7],
+                limit: 20, registered: 25, selected: 20, crossClass: "否",
+                remarks: "需具大學基礎統計程度"
+            },
+            {
+                id: "511057_2_9", semester: 2, code: "511057", className: "輔碩一",
+                name: "學術定向與專業成長",
+                nature: "系必修", englishClass: "否", credits: 1, professor: "張泰銓、黃景逸",
+                location: "明德館演講廳", day: 3, periods: [5, 6],
+                limit: 45, registered: 42, selected: 40, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "611055_2_10", semester: 2, code: "611055", className: "輔導碩博",
+                name: "變態心理學研究",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "謝毅興",
+                location: "明德館 階梯教室(輔諮)", day: 4, periods: [6, 7, 8],
+                limit: 35, registered: 35, selected: 31, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111066_2_11", semester: 2, code: "111066", className: "輔婚家碩一",
+                name: "家庭諮商研究",
+                nature: "組必修", englishClass: "否", credits: 3, professor: "董智慧",
+                location: "明德館 碩士班教室一", day: 3, periods: [2, 3, 4],
+                limit: 20, registered: 16, selected: 17, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "211065_2_12", semester: 2, code: "211065", className: "輔婚家碩一",
+                name: "多元文化與家庭諮商研究",
+                nature: "組選修", englishClass: "否", credits: 3, professor: "王翊涵",
+                location: "明德館 博士班教室二", day: 2, periods: [6, 7, 8],
+                limit: 20, registered: 11, selected: 10, crossClass: "否",
+                remarks: "婚家碩班之特色專長領域選備課程"
+            },
+            {
+                id: "411063_2_13", semester: 2, code: "411063", className: "輔婚家碩一",
+                name: "團體諮商研究(婚)",
+                nature: "組選修", englishClass: "否", credits: 3, professor: "陳尚綾",
+                location: "明德館 團體諮商室", day: 1, periods: [7, 8, 9],
+                limit: 20, registered: 2, selected: 21, crossClass: "否",
+                remarks: "另開輔碩一團諮，修課人數請盡量均衡"
+            },
+            {
+                id: "511062_2_14", semester: 2, code: "511062", className: "輔婚家碩一",
+                name: "高級統計學(婚)",
+                nature: "系必修", englishClass: "否", credits: 3, professor: "張泰銓",
+                location: "明德館 測驗實務教室", day: 1, periods: [3, 4],
+                limit: 20, registered: 8, selected: 11, crossClass: "否",
+                remarks: "需具大學基礎統計程度"
+            },
+            {
+                id: "111068_2_15", semester: 2, code: "211068", className: "輔碩二",
+                name: "表創性藝術治療臨床實務",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "吳明富",
+                location: "明德館 B1多功能教室", day: 4, periods: [6, 7, 8],
+                limit: 20, registered: 2, selected: 3, crossClass: "否",
+                remarks: "需前一期申請實作成功方能選修"
+            },
+            {
+                id: "111067_2_16", semester: 2, code: "311067", className: "輔碩二",
+                name: "質性研究(程)",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "程婉若",
+                location: "明德館 碩士班教室一", day: 1, periods: [6, 7, 8],
+                limit: 20, registered: 6, selected: 6, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111054_2_17", semester: 2, code: "511054", className: "輔導碩博",
+                name: "心理創傷專題研究",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "陳尚綾",
+                location: "明德館 碩士班教室一", day: 3, periods: [7, 8, 9],
+                limit: 20, registered: 3, selected: 27, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111052_2_18", semester: 2, code: "711052", className: "輔導碩博",
+                name: "社區心理學與諮商專題研究",
+                nature: "系選修", englishClass: "否", credits: 3, professor: "白倩如",
+                location: "明德館 博士班教室一", day: 1, periods: [6, 7, 8],
+                limit: 20, registered: 1, selected: 8, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111071_2_19", semester: 2, code: "111071", className: "輔婚家碩二",
+                name: "諮商倫理與法規研究",
+                nature: "組選修", englishClass: "否", credits: 3, professor: "韓楷檉",
+                location: "明德館 碩士班教室一", day: 4, periods: [2, 3, 4],
+                limit: 30, registered: 2, selected: 21, crossClass: "否",
+                remarks: "限本系"
+            },
+            {
+                id: "111070_2_20", semester: 2, code: "211070", className: "輔婚家碩二",
+                name: "婚姻與家族治療實習",
+                nature: "組必修", englishClass: "否", credits: 3, professor: "陳雪均",
+                location: "明德館 個別諮商室", day: 1, periods: [6, 7, 8],
+                limit: 20, registered: 9, selected: 10, crossClass: "否",
+                remarks: "限本班此課程有擋修"
+            }
+        ];
+
+        // 系統動態狀態資料庫
+        let COURSES_DATABASE = [...BUILTIN_COURSES_DATABASE];
+
+        let currentSemester = 1; // 1: 上學期, 2: 下學期
+        let selectedGridCell = null; // { day: X, period: Y }
+        let selectedSort = "default";
+        let userSchedule = [];
+
+        const localStorageKey = "advanced_scholarly_user_schedule";
+        const googleSheetUrlKey = "google_sheet_csv_url_saved";
+
+        // 讀取 LocalStorage 當中已選的排課資料
+        try {
+            const saved = localStorage.getItem(localStorageKey);
+            if (saved) userSchedule = JSON.parse(saved);
+        } catch (e) {
+            console.warn("無法取得本機暫存資料", e);
+        }
+
+        const dayToChinese = { 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日" };
+
+        const colorPalette = [
+            { bg: "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100", label: "bg-indigo-200 text-indigo-800" },
+            { bg: "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100", label: "bg-emerald-200 text-emerald-800" },
+            { bg: "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100", label: "bg-rose-200 text-rose-800" },
+            { bg: "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100", label: "bg-amber-200 text-amber-800" },
+            { bg: "bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100", label: "bg-sky-200 text-sky-800" },
+            { bg: "bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100", label: "bg-violet-200 text-violet-800" },
+            { bg: "bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100", label: "bg-teal-200 text-teal-800" },
+            { bg: "bg-fuchsia-50 border-fuchsia-200 text-fuchsia-700 hover:bg-fuchsia-100", label: "bg-fuchsia-200 text-fuchsia-800" }
+        ];
+    </script>
+
+    <script>
+        function showToast(message, type = "success") {
+            const container = document.getElementById("toast-container");
+            const toast = document.createElement("div");
+            toast.className = `flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border text-xs sm:text-sm transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto min-w-[280px] max-w-sm`;
+            
+            let icon = "";
+            if (type === "success") {
+                toast.classList.add("bg-emerald-50", "border-emerald-200", "text-emerald-800");
+                icon = `<i class="fa-solid fa-circle-check text-emerald-500 text-base sm:text-lg"></i>`;
+            } else if (type === "error") {
+                toast.classList.add("bg-rose-50", "border-rose-200", "text-rose-800");
+                icon = `<i class="fa-solid fa-circle-exclamation text-rose-500 text-base sm:text-lg"></i>`;
+            } else {
+                toast.classList.add("bg-indigo-50", "border-indigo-200", "text-indigo-800");
+                icon = `<i class="fa-solid fa-bell text-indigo-500 text-base sm:text-lg"></i>`;
+            }
+
+            toast.innerHTML = `
+                ${icon}
+                <div class="flex-grow font-medium leading-snug">${message}</div>
+                <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            `;
+
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.remove("translate-y-2", "opacity-0");
+            }, 30);
+
+            setTimeout(() => {
+                toast.classList.add("opacity-0", "translate-y-1");
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+    </script>
+
+    <script>
+        function openSyncModal() {
+            const savedUrl = localStorage.getItem(googleSheetUrlKey) || "";
+            document.getElementById("sheet-csv-url").value = savedUrl;
+            document.getElementById("sync-modal").classList.remove("hidden");
+            document.getElementById("sync-modal").classList.add("flex");
+        }
+
+        function closeSyncModal() {
+            document.getElementById("sync-modal").classList.remove("flex");
+            document.getElementById("sync-modal").classList.add("hidden");
+        }
+
+        // 動態生成並更新「開課班別」篩選下拉選單的選項
+        function updateClassFilterOptions() {
+            const select = document.getElementById("course-class-filter");
+            if (!select) return;
+
+            // 取得當前資料庫中所有的獨特 className
+            const uniqueClasses = [...new Set(COURSES_DATABASE.map(c => c.className).filter(Boolean))].sort();
+
+            // 保留第一個預設選項，其餘清空
+            select.innerHTML = '<option value="">所有開課班別</option>';
+
+            uniqueClasses.forEach(className => {
+                const opt = document.createElement("option");
+                opt.value = className;
+                opt.textContent = className;
+                select.appendChild(opt);
+            });
+        }
+
+        // 當用戶要求恢復使用內置預設資料時
+        function resetToBuiltIn() {
+            localStorage.removeItem(googleSheetUrlKey);
+            COURSES_DATABASE = [...BUILTIN_COURSES_DATABASE];
+            document.getElementById("sheet-csv-url").value = "";
+            
+            document.getElementById("sync-status-indicator").innerHTML = `<i class="fa-solid fa-circle text-[9px] mr-1 text-slate-400"></i>資料來源：內建預設`;
+            document.getElementById("sync-status-indicator").className = "font-semibold text-slate-400";
+            
+            showToast("已回復為系統內建預設課程資料", "info");
+            closeSyncModal();
+            updateClassFilterOptions();
+            resetGridFilter();
+            updateStatistics();
+        }
+
+        // 解析從雲端 Google Sheet 下載下來的 CSV 資料格式
+        function parseGoogleCSV(csvRows) {
+            const parsedDatabase = [];
+            const headers = csvRows[0].map(h => h ? h.trim() : "");
+            
+            const getColIdx = (aliases) => {
+                for (let alias of aliases) {
+                    const idx = headers.findIndex(h => h.includes(alias));
+                    if (idx !== -1) return idx;
+                }
+                return -1;
+            };
+
+            const termIdx = getColIdx(["學期"]);
+            const codeIdx = getColIdx(["課程代碼", "代碼", "代號"]);
+            const classIdx = getColIdx(["開課班別", "班別"]);
+            const nameIdx = getColIdx(["課程名稱", "名稱"]);
+            const natureIdx = getColIdx(["課程性質", "性質"]);
+            const englishIdx = getColIdx(["全英語"]);
+            const creditIdx = getColIdx(["學分"]);
+            const profIdx = getColIdx(["教師姓名", "教師", "老師"]);
+            const timeLocIdx = getColIdx(["上課節次+地點", "節次+地點", "節次", "地點"]);
+            const limitIdx = getColIdx(["上限人數", "上限"]);
+            const regIdx = getColIdx(["登記人數", "登記"]);
+            const selIdx = getColIdx(["選上人數", "選上"]);
+            const remarkIdx = getColIdx(["備註"]);
+
+            for (let i = 1; i < csvRows.length; i++) {
+                const row = csvRows[i];
+                if (!row || row.length < 5) continue;
+                
+                const rawName = (row[nameIdx] || "").trim();
+                const nameParts = rawName.split("\n");
+                const mainName = nameParts[0].trim();
+                const subEnglishName = nameParts.slice(1).join(" ").trim();
+                if (!mainName) continue;
+
+                const rawTerm = (row[termIdx] || "").trim();
+                const sem = rawTerm.includes("下") ? 2 : 1;
+
+                const rawTimeLoc = (row[timeLocIdx] || "").trim();
+                let day = 1;
+                let periods = [];
+                let location = rawTimeLoc;
+
+                const dayMatch = rawTimeLoc.match(/\((一|二|三|四|五|六|日)\)/);
+                if (dayMatch) {
+                    const chDay = dayMatch[1];
+                    const chMap = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "日": 7 };
+                    day = chMap[chDay] || 1;
+                }
+
+                const periodRangeMatch = rawTimeLoc.match(/(\d{2})-(\d{2})/);
+                if (periodRangeMatch) {
+                    const start = parseInt(periodRangeMatch[1]);
+                    const end = parseInt(periodRangeMatch[2]);
+                    for (let p = start; p <= end; p++) {
+                        periods.push(p);
+                    }
+                } else {
+                    const singlePeriodMatch = rawTimeLoc.match(/\b(\d{2})\b/);
+                    if (singlePeriodMatch) {
+                        periods.push(parseInt(singlePeriodMatch[1]));
+                    }
+                }
+
+                if (periods.length === 0) {
+                    periods = [2, 3];
+                }
+
+                parsedDatabase.push({
+                    id: (row[codeIdx] || "C") + "_" + sem + "_" + i,
+                    semester: sem,
+                    code: (row[codeIdx] || "").trim(),
+                    className: (row[classIdx] || "").trim(),
+                    name: mainName,
+                    englishName: subEnglishName,
+                    nature: (row[natureIdx] || "系選修").trim(),
+                    englishClass: (row[englishIdx] || "否").trim(),
+                    credits: parseFloat(row[creditIdx]) || 3,
+                    professor: (row[profIdx] || "").trim().replace(/\s+/g, ' '),
+                    location: location,
+                    day: day,
+                    periods: periods,
+                    limit: parseInt(row[limitIdx]) || 20,
+                    registered: parseInt(row[regIdx]) || 0,
+                    selected: parseInt(row[selIdx]) || 0,
+                    remarks: (row[remarkIdx] || "").trim()
+                });
+            }
+
+            return parsedDatabase;
+        }
+
+        function saveAndSyncSheet() {
+            const url = document.getElementById("sheet-csv-url").value.trim();
+            if (!url) {
+                showToast("請輸入正確的 Google Sheet CSV 發布連結網址", "error");
+                return;
+            }
+
+            if (!url.startsWith("https://docs.google.com/")) {
+                showToast("非法的 Google Sheet 網址格式！請參照說明設定", "error");
+                return;
+            }
+
+            showToast("正在連接 Google Cloud 試算表...", "info");
+
+            Papa.parse(url, {
+                download: true,
+                header: false,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    if (results.data && results.data.length > 1) {
+                        try {
+                            const newDB = parseGoogleCSV(results.data);
+                            if (newDB.length > 0) {
+                                COURSES_DATABASE = newDB;
+                                localStorage.setItem(googleSheetUrlKey, url);
+                                
+                                document.getElementById("sync-status-indicator").innerHTML = `<i class="fa-solid fa-circle text-[9px] mr-1 text-emerald-500 animate-pulse"></i>已同步 Google 試算表`;
+                                document.getElementById("sync-status-indicator").className = "font-bold text-emerald-600";
+                                
+                                showToast(`同步成功！已載入 ${newDB.length} 門課程資料`);
+                                closeSyncModal();
+                                updateClassFilterOptions();
+                                resetGridFilter();
+                                updateStatistics();
+                            } else {
+                                showToast("CSV 解析失敗：未找到符合欄位格式的課程資料", "error");
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            showToast("解析 Google 試算表時出錯，請確認格式是否相符", "error");
+                        }
+                    } else {
+                        showToast("試算表內似乎是空的，請確認發布設定", "error");
+                    }
+                },
+                error: function(err) {
+                    console.error(err);
+                    showToast("讀取雲端試算表失敗，請確認是否已公開「發布到網路」", "error");
+                }
+            });
+        }
+
+        function autoLoadCloudSheetOnStart() {
+            const savedUrl = localStorage.getItem(googleSheetUrlKey);
+            if (savedUrl) {
+                Papa.parse(savedUrl, {
+                    download: true,
+                    header: false,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        if (results.data && results.data.length > 1) {
+                            try {
+                                const newDB = parseGoogleCSV(results.data);
+                                if (newDB.length > 0) {
+                                    COURSES_DATABASE = newDB;
+                                    document.getElementById("sync-status-indicator").innerHTML = `<i class="fa-solid fa-circle text-[9px] mr-1 text-emerald-500"></i>已同步 Google 試算表`;
+                                    document.getElementById("sync-status-indicator").className = "font-bold text-emerald-600";
+                                    updateClassFilterOptions();
+                                    renderScheduleGrid();
+                                    renderCoursePool();
+                                    updateStatistics();
+                                }
+                            } catch (e) {
+                                console.warn("自動載入雲端試算表出錯，降級為內建預設", e);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    </script>
+
+    <script>
+        // 渲染 2~8 節的課表網格
+        function renderScheduleGrid() {
+            const tbody = document.getElementById("schedule-tbody");
+            tbody.innerHTML = "";
+
+            for (let period = 2; period <= 8; period++) {
+                const tr = document.createElement("tr");
+                tr.className = "border-b border-slate-200 hover:bg-slate-50/50 transition-colors duration-150";
+
+                // 節次格
+                const tdPeriod = document.createElement("td");
+                tdPeriod.className = "py-1.5 font-bold text-slate-500 border-r border-slate-200 bg-slate-100/50 text-xs flex flex-col justify-center items-center h-[76px] w-16 flex-shrink-0";
+                tdPeriod.innerHTML = `
+                    <div class="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">第</div>
+                    <div class="text-sm text-slate-700 font-extrabold my-0.5">${period}</div>
+                    <div class="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">節</div>
+                `;
+                tr.appendChild(tdPeriod);
+
+                // 星期一至星期五
+                for (let day = 1; day <= 5; day++) {
+                    const tdCell = document.createElement("td");
+                    tdCell.className = "p-1 border-r border-slate-200 relative align-middle transition-all duration-200 cursor-pointer grid-cell-active h-[76px]";
+                    tdCell.dataset.day = day;
+                    tdCell.dataset.period = period;
+
+                    const scheduledCourse = getScheduledCourseAt(currentSemester, day, period);
+                    const isSelectedCell = selectedGridCell && selectedGridCell.day === day && selectedGridCell.period === period;
+
+                    if (isSelectedCell) {
+                        tdCell.className += " ring-2 ring-indigo-500 ring-inset bg-indigo-50/50";
+                    }
+
+                    if (scheduledCourse) {
+                        const colorIdx = parseInt(scheduledCourse.id.replace(/\D/g, "") || "0") % colorPalette.length;
+                        const palette = colorPalette[colorIdx];
+                        
+                        tdCell.className += ` ${palette.bg}`;
+                        tdCell.innerHTML = `
+                            <div class="h-full flex flex-col justify-between p-1 rounded text-left text-[11px] transition-all duration-200 relative group/cell">
+                                <div class="overflow-hidden">
+                                    <div class="font-extrabold leading-tight text-slate-900 line-clamp-2" title="${scheduledCourse.name}">${scheduledCourse.name}</div>
+                                    <div class="text-[9px] opacity-75 mt-0.5 truncate">${scheduledCourse.professor} | ${scheduledCourse.location.split(' ')[0]}</div>
+                                </div>
+                                <div class="flex justify-between items-center mt-0.5 pt-0.5 border-t border-black/5">
+                                    <span class="text-[9px] px-1 rounded bg-black/5 font-semibold truncate max-w-[70px]">${scheduledCourse.className}</span>
+                                    <button onclick="removeCourseEvent(event, '${scheduledCourse.id}')" class="text-rose-600 hover:text-white hover:bg-rose-500 w-3.5 h-3.5 rounded flex items-center justify-center transition-colors shadow-sm ml-1" title="移除課程">
+                                        <i class="fa-solid fa-xmark text-[9px]"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        tdCell.innerHTML = `
+                            <div class="h-full rounded border border-dashed border-slate-200 hover:border-indigo-400 text-slate-300 hover:text-indigo-500 transition-all duration-150 flex flex-col items-center justify-center py-2 group">
+                                <i class="fa-solid fa-plus text-[10px] opacity-0 group-hover:opacity-100 transform scale-75 hover:scale-100 transition-all mb-0.5"></i>
+                                <span class="text-[9px] font-medium opacity-30 hover:opacity-100">空堂</span>
+                            </div>
+                        `;
+                        tdCell.addEventListener("click", () => selectGridCell(day, period));
+                    }
+
+                    if (scheduledCourse) {
+                        tdCell.addEventListener("click", (e) => {
+                            if (!e.target.closest("button")) {
+                                selectGridCell(day, period);
+                            }
+                        });
+                    }
+
+                    tr.appendChild(tdCell);
+                }
+                tbody.appendChild(tr);
+            }
+        }
+
+        function getScheduledCourseAt(semester, day, period) {
+            return COURSES_DATABASE.find(course => 
+                userSchedule.includes(course.id) && 
+                course.semester === semester && 
+                course.day === day && 
+                course.periods.includes(period)
+            );
+        }
+
+        function selectGridCell(day, period) {
+            if (selectedGridCell && selectedGridCell.day === day && selectedGridCell.period === period) {
+                resetGridFilter();
+            } else {
+                selectedGridCell = { day, period };
+                document.getElementById("btn-clear-filter").classList.remove("hidden");
+                
+                const timeStr = `星期${dayToChinese[day]}第 ${period} 節`;
+                document.getElementById("stat-selected-time").textContent = timeStr;
+                document.getElementById("stat-selected-time").className = "text-xs font-bold text-indigo-600 truncate max-w-[120px]";
+                document.getElementById("pool-title").textContent = `【${timeStr}】可選課程`;
+
+                renderScheduleGrid();
+                renderCoursePool();
+            }
+        }
+
+        function resetGridFilter() {
+            selectedGridCell = null;
+            document.getElementById("btn-clear-filter").classList.add("hidden");
+            document.getElementById("stat-selected-time").textContent = "全部課程";
+            document.getElementById("stat-selected-time").className = "text-xs font-bold text-slate-500 truncate max-w-[120px]";
+            document.getElementById("pool-title").textContent = "所有開課總覽";
+
+            renderScheduleGrid();
+            renderCoursePool();
+        }
+
+        function switchSemester(sem) {
+            currentSemester = sem;
+            selectedGridCell = null;
+            document.getElementById("btn-clear-filter").classList.add("hidden");
+            
+            const btn1 = document.getElementById("btn-sem-1");
+            const btn2 = document.getElementById("btn-sem-2");
+            const label = document.getElementById("grid-semester-label");
+
+            if (sem === 1) {
+                btn1.className = "flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 bg-white text-indigo-600 shadow-sm";
+                btn2.className = "flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900";
+                label.textContent = "第一學期 (上學期)";
+                label.className = "text-xs font-semibold px-2.5 py-1 rounded bg-indigo-100 text-indigo-800";
+            } else {
+                btn1.className = "flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900";
+                btn2.className = "flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 bg-white text-indigo-600 shadow-sm";
+                label.textContent = "第二學期 (下學期)";
+                label.className = "text-xs font-semibold px-2.5 py-1 rounded bg-emerald-100 text-emerald-800";
+            }
+
+            document.getElementById("stat-selected-time").textContent = "全部課程";
+            document.getElementById("pool-title").textContent = "所有開課總覽";
+
+            renderScheduleGrid();
+            renderCoursePool();
+            updateStatistics();
+        }
+    </script>
+
+    <script>
+        function renderCoursePool() {
+            const container = document.getElementById("course-pool-container");
+            const placeholder = document.getElementById("no-courses-placeholder");
+            const countLabel = document.getElementById("showing-count");
+            
+            const searchValue = document.getElementById("course-search").value.trim().toLowerCase();
+            const natureValue = document.getElementById("course-nature-filter").value;
+            const classValue = document.getElementById("course-class-filter").value;
+
+            // 1. 基本過濾：學期
+            let filtered = COURSES_DATABASE.filter(c => c.semester === currentSemester);
+
+            // 2. 點選課表格子時的時段過濾
+            if (selectedGridCell) {
+                filtered = filtered.filter(c => 
+                    c.day === selectedGridCell.day && 
+                    c.periods.includes(selectedGridCell.period)
+                );
+            }
+
+            // 3. 搜尋模糊查詢
+            if (searchValue) {
+                filtered = filtered.filter(c => 
+                    c.name.toLowerCase().includes(searchValue) ||
+                    (c.englishName && c.englishName.toLowerCase().includes(searchValue)) ||
+                    c.professor.toLowerCase().includes(searchValue) ||
+                    c.location.toLowerCase().includes(searchValue) ||
+                    c.code.toLowerCase().includes(searchValue) ||
+                    (c.className && c.className.toLowerCase().includes(searchValue))
+                );
+            }
+
+            // 4. 課程性質過濾
+            if (natureValue) {
+                filtered = filtered.filter(c => c.nature === natureValue);
+            }
+
+            // 5. 開課班別過濾
+            if (classValue) {
+                filtered = filtered.filter(c => c.className === classValue);
+            }
+
+            // 6. 排序演算法
+            if (selectedSort === "rate-desc") {
+                filtered.sort((a, b) => {
+                    const rateA = a.registered > 0 ? (a.selected / a.registered) : 0;
+                    const rateB = b.registered > 0 ? (b.selected / b.registered) : 0;
+                    return rateB - rateA;
+                });
+            } else if (selectedSort === "rate-asc") {
+                filtered.sort((a, b) => {
+                    const rateA = a.registered > 0 ? (a.selected / a.registered) : 0;
+                    const rateB = b.registered > 0 ? (b.selected / b.registered) : 0;
+                    return rateA - rateB;
+                });
+            }
+
+            container.innerHTML = "";
+            countLabel.textContent = `顯示 ${filtered.length} 門課`;
+
+            if (filtered.length === 0) {
+                placeholder.classList.remove("hidden");
+                placeholder.classList.add("flex");
+                return;
+            } else {
+                placeholder.classList.remove("flex");
+                placeholder.classList.add("hidden");
+            }
+
+            filtered.forEach(c => {
+                const isAlreadyAdded = userSchedule.includes(c.id);
+                const rate = c.registered > 0 ? (c.selected / c.registered * 100).toFixed(1) : "100.0";
+                
+                let badgeClass = "bg-slate-100 text-slate-700";
+                if (c.nature.includes("必修")) badgeClass = "bg-rose-100 text-rose-800";
+                else if (c.nature.includes("選修")) badgeClass = "bg-sky-100 text-sky-800";
+                else if (c.nature.includes("師培")) badgeClass = "bg-emerald-100 text-emerald-800";
+
+                const card = document.createElement("div");
+                card.className = `p-3 rounded-lg border text-xs transition-all relative ${
+                    isAlreadyAdded 
+                    ? "bg-slate-50 border-slate-200 opacity-65" 
+                    : "bg-white hover:bg-indigo-50/20 border-slate-200 shadow-sm hover:shadow hover:-translate-y-0.5"
+                }`;
+
+                card.innerHTML = `
+                    <div class="flex flex-col gap-1.5">
+                        <div class="flex justify-between items-start gap-2">
+                            <div>
+                                <span class="text-[9px] font-bold text-slate-400 mr-1">${c.code}</span>
+                                <span class="font-extrabold text-slate-800 text-xs sm:text-sm">${c.name}</span>
+                            </div>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 ${badgeClass}">${c.nature}</span>
+                        </div>
+                        
+                        <div class="text-[11px] text-slate-500 space-y-0.5">
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <span class="flex items-center gap-1 font-semibold text-slate-700">
+                                    <i class="fa-solid fa-user-tie text-slate-400"></i> ${c.professor}
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-graduation-cap text-slate-400"></i> ${c.className}
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-gem text-amber-500"></i> ${c.credits} 學分
+                                </span>
+                                ${c.englishClass === "是" ? `<span class="bg-violet-100 text-violet-800 px-1 py-0.2 rounded text-[9px] font-bold">全英語</span>` : ""}
+                            </div>
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <span class="text-indigo-600 font-bold bg-indigo-50 px-1 py-0.2 rounded">
+                                    <i class="fa-solid fa-clock"></i> 星期${dayToChinese[c.day]} 第 ${c.periods.join(',')} 節
+                                </span>
+                                <span class="text-slate-600 bg-slate-100 px-1 py-0.2 rounded truncate max-w-[240px]" title="${c.location}">
+                                    <i class="fa-solid fa-location-dot"></i> ${c.location}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- 錄取率與人數動態進度條 -->
+                        <div class="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-4 mt-1">
+                            <div class="flex flex-col gap-0.5 flex-grow">
+                                <div class="flex justify-between text-[10px] text-slate-500">
+                                    <span>預估選上率: <strong class="text-indigo-600">${rate}%</strong></span>
+                                    <span>${c.selected} / ${c.registered} (選上/登記)</span>
+                                </div>
+                                <div class="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                                    <div class="bg-indigo-600 h-full" style="width: ${Math.min(parseFloat(rate), 100)}%"></div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                ${isAlreadyAdded 
+                                    ? `<button onclick="removeCourse('${c.id}')" class="bg-slate-200 hover:bg-rose-600 hover:text-white text-slate-600 text-[10px] font-extrabold px-2 py-1 rounded transition-all flex items-center gap-1 group">
+                                         <i class="fa-solid fa-check group-hover:hidden"></i>
+                                         <i class="fa-solid fa-trash-can hidden group-hover:inline"></i>
+                                         <span>已加入</span>
+                                       </button>`
+                                    : `<button onclick="addCourse('${c.id}')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-extrabold px-2.5 py-1 rounded shadow-sm hover:shadow transition-all flex items-center gap-1">
+                                         <i class="fa-solid fa-plus"></i>
+                                         <span>加入課表</span>
+                                       </button>`
+                                }
+                            </div>
+                        </div>
+
+                        ${c.remarks ? `
+                        <div class="text-[9px] bg-amber-50 text-amber-800 rounded p-1 border border-amber-100/50 mt-1 flex gap-1 items-start">
+                            <i class="fa-solid fa-circle-exclamation mt-0.5 flex-shrink-0 text-amber-500"></i>
+                            <span class="line-clamp-1 hover:line-clamp-none transition-all cursor-help">${c.remarks}</span>
+                        </div>` : ""}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function addCourse(courseId) {
+            const cToAdd = COURSES_DATABASE.find(c => c.id === courseId);
+            if (!cToAdd) return;
+
+            for (let period of cToAdd.periods) {
+                const conflict = getScheduledCourseAt(cToAdd.semester, cToAdd.day, period);
+                if (conflict) {
+                    showToast(`選課衝突！該時段（星期${dayToChinese[cToAdd.day]}第${period}節）已安排「${conflict.name}」！`, "error");
+                    return;
+                }
+            }
+
+            userSchedule.push(courseId);
+            saveSchedule();
+            showToast(`已排入課程：「${cToAdd.name}」！`);
+
+            renderScheduleGrid();
+            renderCoursePool();
+            updateStatistics();
+        }
+
+        function removeCourse(courseId) {
+            const course = COURSES_DATABASE.find(c => c.id === courseId);
+            userSchedule = userSchedule.filter(id => id !== courseId);
+            saveSchedule();
+            
+            if (course) {
+                showToast(`已將「${course.name}」移出課表。`, "info");
+            }
+
+            renderScheduleGrid();
+            renderCoursePool();
+            updateStatistics();
+        }
+
+        function removeCourseEvent(event, courseId) {
+            event.stopPropagation();
+            removeCourse(courseId);
+        }
+
+        function saveSchedule() {
+            localStorage.setItem(localStorageKey, JSON.stringify(userSchedule));
+        }
+
+        function clearSchedule() {
+            const termCourses = COURSES_DATABASE.filter(c => c.semester === currentSemester && userSchedule.includes(c.id));
+            if (termCourses.length === 0) {
+                showToast("您當前學期的課表內本就是空的！", "info");
+                return;
+            }
+
+            userSchedule = userSchedule.filter(id => {
+                const c = COURSES_DATABASE.find(course => course.id === id);
+                return c && c.semester !== currentSemester;
+            });
+            
+            saveSchedule();
+            showToast("當前學期課表已全部清空！", "info");
+
+            renderScheduleGrid();
+            renderCoursePool();
+            updateStatistics();
+        }
+
+        function updateStatistics() {
+            const currentSemCourses = COURSES_DATABASE.filter(c => 
+                userSchedule.includes(c.id) && c.semester === currentSemester
+            );
+
+            document.getElementById("stat-course-count").textContent = `${currentSemCourses.length} 門課`;
+            
+            const totalCredits = currentSemCourses.reduce((sum, c) => sum + c.credits, 0);
+            document.getElementById("stat-total-credits").textContent = `${totalCredits} 學分`;
+
+            if (currentSemCourses.length > 0) {
+                const totalRate = currentSemCourses.reduce((sum, c) => {
+                    const r = c.registered > 0 ? (c.selected / c.registered) : 1;
+                    return sum + r;
+                }, 0);
+                const avgRate = (totalRate / currentSemCourses.length * 100).toFixed(1);
+                document.getElementById("stat-avg-rate").textContent = `${avgRate} %`;
+            } else {
+                document.getElementById("stat-avg-rate").textContent = "0.0 %";
+            }
+        }
+
+        function changeSort(sortType) {
+            selectedSort = sortType;
+
+            ["default", "rate-desc", "rate-asc"].forEach(s => {
+                const btn = document.getElementById(`sort-btn-${s}`);
+                if (s === sortType) {
+                    btn.className = "px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold transition-all";
+                } else {
+                    btn.className = "px-1.5 py-0.5 rounded hover:bg-slate-100 text-slate-600 transition-all";
+                }
+            });
+
+            renderCoursePool();
+        }
+
+        function exportSchedule() {
+            const currentSemCourses = COURSES_DATABASE.filter(c => 
+                userSchedule.includes(c.id) && c.semester === currentSemester
+            );
+
+            if (currentSemCourses.length === 0) {
+                showToast("當前課表沒有排課，無法匯出喔！", "error");
+                return;
+            }
+
+            let outputText = `======================================================\n`;
+            outputText += `  卓越大學課表設計成果 [ ${currentSemester === 1 ? '上學期' : '下學期'} ] \n`;
+            outputText += `======================================================\n`;
+            outputText += `產生時間：${new Date().toLocaleString()}\n\n`;
+
+            currentSemCourses.sort((a, b) => {
+                if (a.day !== b.day) return a.day - b.day;
+                return a.periods[0] - b.periods[0];
+            });
+
+            currentSemCourses.forEach(c => {
+                const rate = c.registered > 0 ? (c.selected / c.registered * 100).toFixed(1) : "100.0";
+                outputText += `【${c.name}】(${c.code})\n`;
+                outputText += `  - 授課教師：${c.professor}\n`;
+                outputText += `  - 學分性質：${c.credits} 學分 / ${c.nature}\n`;
+                outputText += `  - 開課班別：${c.className}\n`;
+                outputText += `  - 上課時段：星期${dayToChinese[c.day]} 第 ${c.periods.join(',')} 節\n`;
+                outputText += `  - 上課教室：${c.location}\n`;
+                outputText += `  - 預估選上機率：${rate}%\n`;
+                if(c.remarks) outputText += `  - 備註提醒：${c.remarks}\n`;
+                outputText += `------------------------------------------------------\n`;
+            });
+
+            const blob = new Blob([outputText], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `卓越大學_學期功課表_${currentSemester === 1 ? '上學期' : '下學期'}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showToast("課表大綱文字檔已順利匯出！");
+        }
+
+        // 頁面初次載入
+        window.onload = function() {
+            updateClassFilterOptions();
+            renderScheduleGrid();
+            renderCoursePool();
+            updateStatistics();
+            autoLoadCloudSheetOnStart();
+        };
+    </script>
+</body>
+</html>
