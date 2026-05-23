@@ -10,6 +10,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <!-- 引入 PapaParse 解析 CSV 工具 (用於解析 Google Sheets 匯出的 CSV) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- 引入 html2canvas 實現網頁轉圖片功能 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         body {
             font-family: 'Inter', 'Noto Sans TC', sans-serif;
@@ -40,9 +42,6 @@
     <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div class="flex items-center space-x-3">
-                <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-md flex items-center justify-center">
-                    <i class="fa-solid fa-graduation-cap text-lg"></i>
-                </div>
                 <div>
                     <h1 class="text-lg font-extrabold text-slate-900 tracking-tight">
                         課表工具
@@ -73,14 +72,14 @@
                     </span>
                 </div>
 
-                <!-- 匯出課表 (僅圖示，含美化 Tooltip) -->
+                <!-- 匯出課表圖片 (僅圖示，含美化 Tooltip) -->
                 <div class="relative group">
                     <button onclick="exportSchedule()" class="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all shadow-md hover:shadow-lg">
-                        <i class="fa-solid fa-file-export text-lg"></i>
+                        <i class="fa-solid fa-file-image text-lg"></i>
                     </button>
                     <!-- Tooltip -->
                     <span class="absolute bottom-[-38px] left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[11px] px-2 py-1 rounded shadow-md opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
-                        匯出課表
+                        匯出課表圖片
                     </span>
                 </div>
             </div>
@@ -93,24 +92,16 @@
         <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm flex flex-col lg:flex-row justify-between items-center gap-4">
             <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
                 <div class="bg-slate-100 p-1 rounded-xl flex w-full sm:w-auto shadow-inner">
-                    <button id="btn-sem-1" onclick="switchSemester(1)" class="flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 bg-white text-indigo-600 shadow-sm">
-                        <i class="fa-solid fa-leaf text-amber-500"></i>
-                        第一學期 (上學期)
+                    <button id="btn-sem-1" onclick="switchSemester(1)" class="flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center bg-white text-indigo-600 shadow-sm">
+                        上學期
                     </button>
-                    <button id="btn-sem-2" onclick="switchSemester(2)" class="flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900">
-                        <i class="fa-solid fa-seedling text-emerald-500"></i>
-                        第二學期 (下學期)
+                    <button id="btn-sem-2" onclick="switchSemester(2)" class="flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center text-slate-600 hover:text-slate-900">
+                        下學期
                     </button>
                 </div>
                 <div class="text-xs text-slate-500 text-center sm:text-left flex flex-col sm:flex-row gap-1 sm:gap-3">
-                    <span>
-                        <i class="fa-solid fa-info-circle text-indigo-500 mr-1"></i>
-                        點擊課表時段可快速過濾右側對應課程。
-                    </span>
                     <!-- 雲端同步狀態指示燈 -->
-                    <span id="sync-status-indicator" class="font-semibold text-slate-400">
-                        <i class="fa-solid fa-circle text-[9px] mr-1"></i>資料來源：內建預設
-                    </span>
+                    <span id="sync-status-indicator" class="font-semibold text-slate-400"></span>
                 </div>
             </div>
 
@@ -142,13 +133,13 @@
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch flex-grow overflow-y-auto lg:overflow-hidden lg:h-[calc(100vh-180px)] min-h-0">
             
             <!-- 左側：一週課表 (佔 7/12)，手機版也完整保留並可橫向滾動 -->
-            <div class="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[500px] lg:h-full">
+            <div id="timetable-capture-area" class="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[500px] lg:h-full">
                 <div class="p-3 border-b border-slate-200 flex justify-between items-center bg-slate-50/80">
                     <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></span>
-                        <h3 class="font-bold text-slate-800 text-sm">學期功課表 (第 2 至 8 節)</h3>
+                        <span class="w-3 h-3 rounded-full bg-indigo-600"></span>
+                        <h3 class="font-bold text-slate-800 text-sm">課表</h3>
                     </div>
-                    <span id="grid-semester-label" class="text-xs font-semibold px-2.5 py-1 rounded bg-indigo-100 text-indigo-800">第一學期</span>
+                    <span id="grid-semester-label" class="text-xs font-semibold px-2.5 py-1 rounded bg-indigo-100 text-indigo-800">上學期</span>
                 </div>
                 
                 <!-- 手機版加強橫向滾動機制，確保課表不消失 -->
@@ -168,12 +159,6 @@
                             <!-- 由 JavaScript 動態繪製第 2 ~ 8 節 -->
                         </tbody>
                     </table>
-                </div>
-                <div class="p-3 bg-slate-50 border-t border-slate-150 text-[11px] text-slate-500 flex justify-between items-center">
-                    <span class="truncate">💡 點選課表格子，右側即刻篩選對應科目！</span>
-                    <button onclick="resetGridFilter()" class="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 transition-all flex-shrink-0">
-                        <i class="fa-solid fa-rotate-left"></i> 重設篩選 (顯示全部)
-                    </button>
                 </div>
             </div>
 
@@ -297,7 +282,7 @@
     <!-- 頁尾 -->
     <footer class="bg-white border-t border-slate-200 py-3 mt-auto">
         <div class="max-w-[1600px] mx-auto px-4 text-center text-[11px] text-slate-400">
-            <p>© 2026 卓越大學課表設計及排課規劃系統 · 專屬研究所及教育學程專用板</p>
+            <p>© 2026 卓越大學課表設計及排課規劃系統 · 專屬研究所及教育學程專用版</p>
         </div>
     </footer>
 
@@ -825,7 +810,7 @@
             COURSES_DATABASE = [...BUILTIN_COURSES_DATABASE];
             document.getElementById("sheet-csv-url").value = "";
             
-            document.getElementById("sync-status-indicator").innerHTML = `<i class="fa-solid fa-circle text-[9px] mr-1 text-slate-400"></i>資料來源：內建預設`;
+            document.getElementById("sync-status-indicator").innerHTML = "";
             document.getElementById("sync-status-indicator").className = "font-semibold text-slate-400";
             
             showToast("已回復為系統內建預設課程資料", "info");
@@ -1054,11 +1039,11 @@
                             <div class="h-full flex flex-col justify-between p-1 rounded text-left text-[11px] transition-all duration-200 relative group/cell">
                                 <div class="overflow-hidden">
                                     <div class="font-extrabold leading-tight text-slate-900 line-clamp-2" title="${scheduledCourse.name}">${scheduledCourse.name}</div>
-                                    <div class="text-[9px] opacity-75 mt-0.5 truncate">${scheduledCourse.professor} | ${scheduledCourse.location.split(' ')[0]}</div>
+                                    <div class="text-[9px] opacity-75 mt-0.5 truncate font-medium text-slate-800">${scheduledCourse.professor} | ${scheduledCourse.location}</div>
                                 </div>
                                 <div class="flex justify-between items-center mt-0.5 pt-0.5 border-t border-black/5">
                                     <span class="text-[9px] px-1 rounded bg-black/5 font-semibold truncate max-w-[70px]">${scheduledCourse.className}</span>
-                                    <button onclick="removeCourseEvent(event, '${scheduledCourse.id}')" class="text-rose-600 hover:text-white hover:bg-rose-500 w-3.5 h-3.5 rounded flex items-center justify-center transition-colors shadow-sm ml-1" title="移除課程">
+                                    <button data-html2canvas-ignore onclick="removeCourseEvent(event, '${scheduledCourse.id}')" class="text-rose-600 hover:text-white hover:bg-rose-500 w-3.5 h-3.5 rounded flex items-center justify-center transition-colors shadow-sm ml-1" title="移除課程">
                                         <i class="fa-solid fa-xmark text-[9px]"></i>
                                     </button>
                                 </div>
@@ -1067,7 +1052,7 @@
                     } else {
                         tdCell.innerHTML = `
                             <div class="h-full rounded border border-dashed border-slate-200 hover:border-indigo-400 text-slate-300 hover:text-indigo-500 transition-all duration-150 flex flex-col items-center justify-center py-2 group">
-                                <i class="fa-solid fa-plus text-[10px] opacity-0 group-hover:opacity-100 transform scale-75 hover:scale-100 transition-all mb-0.5"></i>
+                                <i class="fa-solid fa-plus text-[10px] opacity-0 group-hover:opacity-100 transform scale-75 hover:scale-100 transition-all mb-0.5" data-html2canvas-ignore></i>
                                 <span class="text-[9px] font-medium opacity-30 hover:opacity-100">空堂</span>
                             </div>
                         `;
@@ -1135,14 +1120,14 @@
             const label = document.getElementById("grid-semester-label");
 
             if (sem === 1) {
-                btn1.className = "flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 bg-white text-indigo-600 shadow-sm";
-                btn2.className = "flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900";
-                label.textContent = "第一學期 (上學期)";
+                btn1.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center bg-white text-indigo-600 shadow-sm";
+                btn2.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center text-slate-600 hover:text-slate-900";
+                label.textContent = "上學期";
                 label.className = "text-xs font-semibold px-2.5 py-1 rounded bg-indigo-100 text-indigo-800";
             } else {
-                btn1.className = "flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900";
-                btn2.className = "flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5 bg-white text-indigo-600 shadow-sm";
-                label.textContent = "第二學期 (下學期)";
+                btn1.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center text-slate-600 hover:text-slate-900";
+                btn2.className = "flex-1 sm:flex-none px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center bg-white text-indigo-600 shadow-sm";
+                label.textContent = "下學期";
                 label.className = "text-xs font-semibold px-2.5 py-1 rounded bg-emerald-100 text-emerald-800";
             }
 
@@ -1414,49 +1399,32 @@
         }
 
         function exportSchedule() {
-            const currentSemCourses = COURSES_DATABASE.filter(c => 
-                userSchedule.includes(c.id) && c.semester === currentSemester
-            );
+            const element = document.getElementById("timetable-capture-area");
+            if (!element) return;
 
-            if (currentSemCourses.length === 0) {
-                showToast("當前課表沒有排課，無法匯出喔！", "error");
-                return;
-            }
+            showToast("正在將課表轉換為圖片...", "info");
 
-            let outputText = `======================================================\n`;
-            outputText += `  卓越大學課表設計成果 [ ${currentSemester === 1 ? '上學期' : '下學期'} ] \n`;
-            outputText += `======================================================\n`;
-            outputText += `產生時間：${new Date().toLocaleString()}\n\n`;
-
-            currentSemCourses.sort((a, b) => {
-                if (a.day !== b.day) return a.day - b.day;
-                return a.periods[0] - b.periods[0];
+            // 使用 html2canvas 將課表轉為畫布，設定較高解析度 scale 以維持畫質，並自動排除標記 data-html2canvas-ignore 的按鈕
+            html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: "#ffffff",
+                logging: false
+            }).then(canvas => {
+                try {
+                    const link = document.createElement("a");
+                    link.download = `卓越大學_課表_${currentSemester === 1 ? '上學期' : '下學期'}.png`;
+                    link.href = canvas.toDataURL("image/png");
+                    link.click();
+                    showToast("課表圖片已順利匯出！");
+                } catch (err) {
+                    console.error("圖片轉換出錯：", err);
+                    showToast("圖片匯出失敗，請重試", "error");
+                }
+            }).catch(err => {
+                console.error("html2canvas Error:", err);
+                showToast("轉譯圖片時發生錯誤", "error");
             });
-
-            currentSemCourses.forEach(c => {
-                const rate = c.registered > 0 ? (c.selected / c.registered * 100).toFixed(1) : "100.0";
-                outputText += `【${c.name}】(${c.code})\n`;
-                outputText += `  - 授課教師：${c.professor}\n`;
-                outputText += `  - 學分性質：${c.credits} 學分 / ${c.nature}\n`;
-                outputText += `  - 開課班別：${c.className}\n`;
-                outputText += `  - 上課時段：星期${dayToChinese[c.day]} 第 ${c.periods.join(',')} 節\n`;
-                outputText += `  - 上課教室：${c.location}\n`;
-                outputText += `  - 預估選上機率：${rate}%\n`;
-                if(c.remarks) outputText += `  - 備註提醒：${c.remarks}\n`;
-                outputText += `------------------------------------------------------\n`;
-            });
-
-            const blob = new Blob([outputText], { type: "text/plain;charset=utf-8" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `卓越大學_學期功課表_${currentSemester === 1 ? '上學期' : '下學期'}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            showToast("課表大綱文字檔已順利匯出！");
         }
 
         // 頁面初次載入
